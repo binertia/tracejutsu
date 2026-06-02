@@ -4,17 +4,18 @@ Updated: 2026-06-03
 
 ## Current State
 
-Runtime Guard is an estimated **95% complete for the MVP**. The fake-event
+Runtime Guard is an estimated **98% complete for the MVP**. The fake-event
 pipeline is runnable without root, deterministic detection and compression are
 implemented, SQLite persistence is hardened, Linux amd64 eBPF collectors are
 present, the live event path uses a bounded async persistence queue, and the
 local LLM client is wired through the CLI.
 
-The remaining **5%** is concentrated in capable-host validation:
+The remaining **2%** is concentrated in one validation step:
 
-1. Run root-only eBPF smoke tests on a host that permits BPF map creation and
-   probe attachment.
-2. Perform an end-to-end test against an actual local `llama-server`.
+1. Rerun the end-to-end local `llama-server` report after JSON Schema output
+   enforcement was added.
+
+Root-only eBPF smoke tests passed on a capable Linux amd64 host on 2026-06-03.
 
 ## Implemented MVP Surface
 
@@ -63,6 +64,8 @@ Implemented deterministic rules:
   `--allow-remote-endpoint`.
 - HTTP redirects are refused, loopback proxy use is bypassed, request timeouts
   are enforced, responses are size-limited, and strict JSON is required.
+- llama-server receives a JSON Schema-constrained response format. The client
+  still rejects malformed or schema-invalid reports instead of coercing them.
 - New SQLite files are created with `0600`. Existing DB paths must be private
   regular files and cannot be symlinks. The immediate parent directory must be
   owned by the running UID and cannot permit group or other writes.
@@ -81,15 +84,13 @@ Implemented deterministic rules:
 - Event persistence is asynchronous, but incident writes remain synchronous.
   A slow disk can still delay incident reporting even though live ingestion is
   no longer blocked on per-event SQLite writes.
-- The local LLM path has fake-transport coverage but has not been exercised with
-  an actual `llama-server` model in this workspace.
+- The actual local `llama-server` HTTP route was exercised. It exposed a list
+  field type mismatch under plain `json_object` output. JSON Schema output
+  enforcement is now implemented and awaits one live rerun.
 - Container fields are populated best-effort from procfs cgroup and container
   hostname data when available. This is a bounded PID/start-time cache; the
   hostname is not guaranteed to match the container-runtime display name.
 - IPv6 connection capture is not implemented.
-- This workspace host denies BPF map creation even outside the sandbox. Live
-  collector startup fails with `operation not permitted`; use a capable Linux
-  host for root-only smoke execution.
 - `runtime-guard show` appends an existing stored LLM analysis after the
   deterministic incident evidence when one is available.
 
@@ -116,7 +117,8 @@ go test -tags=ebpf_smoke ./internal/ebpf -run '^$'
 ```
 
 All commands above passed on 2026-06-03. The tagged smoke command verifies
-compilation only. Execute root smoke tests on a BPF-capable Linux amd64 host:
+compilation only. Root smoke tests also passed on a BPF-capable Linux amd64
+host on 2026-06-03:
 
 ```sh
 sudo go test -tags=ebpf_smoke ./internal/ebpf \
@@ -138,11 +140,13 @@ Run local LLM analysis:
 ```sh
 llama-server --model /path/to/model.gguf --port 8080
 go run ./cmd/runtime-guard llm --db "$DB" inc-evt-001
+go run ./cmd/runtime-guard show --db "$DB" inc-evt-001
 ```
 
 ## Recommended Next Task
 
-Exercise the root-only eBPF path and the real local LLM path on a capable host.
+Rerun the actual local LLM command and confirm that `show` appends the stored
+analysis.
 
 ## File Map
 

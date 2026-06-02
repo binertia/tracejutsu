@@ -63,6 +63,24 @@ func TestHTTPClientAnalyze(t *testing.T) {
 	if received.ResponseFormat.Type != "json_object" {
 		t.Fatalf("response format = %q, want json_object", received.ResponseFormat.Type)
 	}
+	schema := received.ResponseFormat.Schema
+	if schema.Type != "object" {
+		t.Fatalf("response schema type = %q, want object", schema.Type)
+	}
+	if schema.AdditionalProperties == nil || *schema.AdditionalProperties {
+		t.Fatal("response schema must reject additional properties")
+	}
+	for _, field := range []string{
+		"why_suspicious",
+		"false_positive_possibilities",
+		"recommended_commands",
+		"containment_advice",
+	} {
+		property := schema.Properties[field]
+		if property.Type != "array" || property.Items == nil || property.Items.Type != "string" {
+			t.Fatalf("response schema property %q = %+v, want array of strings", field, property)
+		}
+	}
 }
 
 func TestHTTPClientPreservesRawResponseOnlyWhenConfigured(t *testing.T) {
@@ -96,6 +114,7 @@ func TestHTTPClientRejectsInvalidReports(t *testing.T) {
 	}{
 		{"unknown key", strings.TrimSuffix(validReportJSON(), "}") + `,"invented":"value"}`},
 		{"invalid risk", strings.Replace(validReportJSON(), `"critical"`, `"severe"`, 1)},
+		{"string instead of list", strings.Replace(validReportJSON(), `"why_suspicious":["Downloaded binary connected outbound."]`, `"why_suspicious":"Downloaded binary connected outbound."`, 1)},
 		{"missing list", strings.Replace(validReportJSON(), `"containment_advice":["review manually"]`, `"containment_advice":null`, 1)},
 		{"trailing JSON", validReportJSON() + `{}`},
 		{"markdown fence", "```json\n" + validReportJSON() + "\n```"},

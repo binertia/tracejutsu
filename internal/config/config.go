@@ -19,7 +19,7 @@ func Default() Config {
 		LLM: LLMConfig{
 			Endpoint:            "http://127.0.0.1:8080",
 			Model:               "local-model",
-			Timeout:             "30s",
+			Timeout:             "5m",
 			RemoteEndpointOptIn: false,
 			PreserveRawResponse: false,
 		},

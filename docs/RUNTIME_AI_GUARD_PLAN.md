@@ -1,9 +1,10 @@
 # Runtime AI Guard Plan
 
 > Implementation status: see [`HANDOFF.md`](HANDOFF.md). As of 2026-06-03, the
-> repository is estimated at 95% MVP completion, with the remaining work
-> concentrated in capable-host eBPF runtime validation and an end-to-end test
-> against an actual local `llama-server`.
+> repository is estimated at 98% MVP completion. Root-only eBPF collector smoke
+> tests passed on a capable host. The remaining validation step is an end-to-end
+> report run against the actual local `llama-server` after JSON Schema output
+> enforcement was added.
 
 ## 1. Project Vision
 
@@ -351,6 +352,9 @@ Requirements:
 - Use exactly these keys:
   summary, risk_level, likely_behavior, why_suspicious,
   false_positive_possibilities, recommended_commands, containment_advice.
+- summary, risk_level, and likely_behavior must be JSON strings.
+- why_suspicious, false_positive_possibilities, recommended_commands, and
+  containment_advice must be JSON arrays of strings, even for one or zero items.
 - risk_level must be one of: low, medium, high, critical.
 - Never claim that containment actions were executed.
 
@@ -358,7 +362,9 @@ Compressed incident JSON:
 {{ incident_json }}
 ```
 
-The LLM HTTP client should validate JSON, reject malformed responses, enforce a timeout, and preserve the raw response for debugging only when configured to do so.
+The LLM HTTP client should request JSON Schema-constrained output, validate JSON,
+reject malformed responses, enforce a timeout, and preserve the raw response for
+debugging only when configured to do so.
 
 ## 12. Storage Plan
 

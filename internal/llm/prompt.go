@@ -22,6 +22,9 @@ Requirements:
 - Use exactly these keys:
   summary, risk_level, likely_behavior, why_suspicious,
   false_positive_possibilities, recommended_commands, containment_advice.
+- summary, risk_level, and likely_behavior must be JSON strings.
+- why_suspicious, false_positive_possibilities, recommended_commands, and
+  containment_advice must be JSON arrays of strings, even for one or zero items.
 - risk_level must be one of: low, medium, high, critical.
 - Never claim that containment actions were executed.
 

@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	defaultTimeout       = 30 * time.Second
+	defaultTimeout       = 5 * time.Minute
 	maxHTTPResponseBytes = 1024 * 1024
 	maxErrorExcerptBytes = 1024
 )
@@ -91,7 +91,8 @@ func (client *HTTPClient) Analyze(ctx context.Context, incident compress.Inciden
 		Temperature: 0,
 		Stream:      false,
 		ResponseFormat: responseFormat{
-			Type: "json_object",
+			Type:   "json_object",
+			Schema: reportJSONSchema(),
 		},
 	})
 	if err != nil {
@@ -158,7 +159,49 @@ type chatMessage struct {
 }
 
 type responseFormat struct {
-	Type string `json:"type"`
+	Type   string     `json:"type"`
+	Schema jsonSchema `json:"schema"`
+}
+
+type jsonSchema struct {
+	Type                 string                `json:"type"`
+	Properties           map[string]jsonSchema `json:"properties,omitempty"`
+	Required             []string              `json:"required,omitempty"`
+	AdditionalProperties *bool                 `json:"additionalProperties,omitempty"`
+	Enum                 []string              `json:"enum,omitempty"`
+	Items                *jsonSchema           `json:"items,omitempty"`
+}
+
+func reportJSONSchema() jsonSchema {
+	noAdditionalProperties := false
+	stringSchema := jsonSchema{Type: "string"}
+	stringListSchema := jsonSchema{
+		Type:  "array",
+		Items: &stringSchema,
+	}
+
+	return jsonSchema{
+		Type: "object",
+		Properties: map[string]jsonSchema{
+			"summary":                      stringSchema,
+			"risk_level":                   {Type: "string", Enum: []string{"low", "medium", "high", "critical"}},
+			"likely_behavior":              stringSchema,
+			"why_suspicious":               stringListSchema,
+			"false_positive_possibilities": stringListSchema,
+			"recommended_commands":         stringListSchema,
+			"containment_advice":           stringListSchema,
+		},
+		Required: []string{
+			"summary",
+			"risk_level",
+			"likely_behavior",
+			"why_suspicious",
+			"false_positive_possibilities",
+			"recommended_commands",
+			"containment_advice",
+		},
+		AdditionalProperties: &noAdditionalProperties,
+	}
 }
 
 type chatCompletionResponse struct {

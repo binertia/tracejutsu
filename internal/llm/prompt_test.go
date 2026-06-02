@@ -35,4 +35,7 @@ func TestBuildPromptRedactsSensitiveIncidentFields(t *testing.T) {
 	if !strings.Contains(prompt, "[REDACTED]") {
 		t.Fatal("prompt did not include redacted markers")
 	}
+	if !strings.Contains(prompt, "must be JSON arrays of strings") {
+		t.Fatal("prompt did not describe required list field types")
+	}
 }

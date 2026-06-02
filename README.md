@@ -57,11 +57,13 @@ go run ./cmd/runtime-guard llm --db "$DB" inc-evt-001
 ```
 
 The LLM receives compressed incident JSON only. The client accepts loopback
-endpoints by default, enforces a timeout, and stores validated JSON reports
-separately from deterministic incident scores. Use `--allow-remote-endpoint`
-only for an explicitly configured remote service. Raw LLM output is discarded
-unless `--preserve-raw-response` is set. If the local server requires an API
-key, set `RUNTIME_GUARD_LLM_API_KEY`.
+endpoints by default, constrains llama-server output with a JSON Schema,
+enforces a default 5-minute timeout, and stores validated JSON reports
+separately from deterministic incident scores. Override the timeout with
+`--timeout`. Use `--allow-remote-endpoint` only for an explicitly configured
+remote service. Raw LLM output is discarded unless `--preserve-raw-response`
+is set. If the local server requires an API key, set
+`RUNTIME_GUARD_LLM_API_KEY`.
 
 See [`docs/RUNTIME_AI_GUARD_PLAN.md`](docs/RUNTIME_AI_GUARD_PLAN.md) for the
 architecture and phased implementation plan. See
