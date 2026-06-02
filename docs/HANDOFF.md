@@ -4,18 +4,16 @@ Updated: 2026-06-03
 
 ## Current State
 
-Runtime Guard is an estimated **98% complete for the MVP**. The fake-event
+Runtime Guard is **100% complete for the planned MVP**. The fake-event
 pipeline is runnable without root, deterministic detection and compression are
 implemented, SQLite persistence is hardened, Linux amd64 eBPF collectors are
 present, the live event path uses a bounded async persistence queue, and the
 local LLM client is wired through the CLI.
 
-The remaining **2%** is concentrated in one validation step:
-
-1. Rerun the end-to-end local `llama-server` report after JSON Schema output
-   enforcement was added.
-
 Root-only eBPF smoke tests passed on a capable Linux amd64 host on 2026-06-03.
+An actual local `llama-server` report also completed successfully after JSON
+Schema output enforcement was added: the response decoded, persisted, and
+rendered through `runtime-guard show`.
 
 ## Implemented MVP Surface
 
@@ -84,9 +82,6 @@ Implemented deterministic rules:
 - Event persistence is asynchronous, but incident writes remain synchronous.
   A slow disk can still delay incident reporting even though live ingestion is
   no longer blocked on per-event SQLite writes.
-- The actual local `llama-server` HTTP route was exercised. It exposed a list
-  field type mismatch under plain `json_object` output. JSON Schema output
-  enforcement is now implemented and awaits one live rerun.
 - Container fields are populated best-effort from procfs cgroup and container
   hostname data when available. This is a bounded PID/start-time cache; the
   hostname is not guaranteed to match the container-runtime display name.
@@ -145,8 +140,8 @@ go run ./cmd/runtime-guard show --db "$DB" inc-evt-001
 
 ## Recommended Next Task
 
-Rerun the actual local LLM command and confirm that `show` appends the stored
-analysis.
+Track syscall exits for file writes and chmod operations so incidents can
+distinguish attempted actions from successful changes.
 
 ## File Map
 

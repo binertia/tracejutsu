@@ -1,10 +1,9 @@
 # Runtime AI Guard Plan
 
 > Implementation status: see [`HANDOFF.md`](HANDOFF.md). As of 2026-06-03, the
-> repository is estimated at 98% MVP completion. Root-only eBPF collector smoke
-> tests passed on a capable host. The remaining validation step is an end-to-end
-> report run against the actual local `llama-server` after JSON Schema output
-> enforcement was added.
+> planned MVP is complete. Root-only eBPF collector smoke tests passed on a
+> capable host, and an actual local `llama-server` report decoded, persisted,
+> and rendered successfully after JSON Schema output enforcement was added.
 
 ## 1. Project Vision
 
