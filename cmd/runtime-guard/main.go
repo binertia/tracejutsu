@@ -188,9 +188,10 @@ func runLive(args []string, out io.Writer) (err error) {
 	}
 
 	collector, err := sensor.NewRuntimeCollectorWithConfig(sensor.RuntimeConfig{
-		RingBufferSize:    *ringBufferSize,
-		Collectors:        enabledCollectors,
-		FileWriteMinBytes: *fileWriteMinBytes,
+		RingBufferSize:     *ringBufferSize,
+		Collectors:         enabledCollectors,
+		FileWriteMinBytes:  *fileWriteMinBytes,
+		FileWriteIgnorePID: os.Getpid(),
 	})
 	if err != nil {
 		return fmt.Errorf("create runtime collector: %w", err)
@@ -241,8 +242,8 @@ func runLive(args []string, out io.Writer) (err error) {
 	flushTicker := time.NewTicker(time.Second)
 	defer flushTicker.Stop()
 
-	fmt.Fprintf(out, "runtime-guard: collecting %s events; quiet_events=%t stats_interval=%s event_buffer=%d persist_buffer=%d persist_batch_size=%d ring_buffer_size=%d file_write_min_bytes=%d; press Ctrl-C to stop\n",
-		strings.Join(enabledCollectors, ","), *quietEvents, statsIntervalLabel(*statsInterval), *eventBuffer, *persistBuffer, *persistBatchSize, *ringBufferSize, *fileWriteMinBytes)
+	fmt.Fprintf(out, "runtime-guard: collecting %s events; quiet_events=%t stats_interval=%s event_buffer=%d persist_buffer=%d persist_batch_size=%d ring_buffer_size=%d file_write_min_bytes=%d file_write_ignore_pid=%d; press Ctrl-C to stop\n",
+		strings.Join(enabledCollectors, ","), *quietEvents, statsIntervalLabel(*statsInterval), *eventBuffer, *persistBuffer, *persistBatchSize, *ringBufferSize, *fileWriteMinBytes, os.Getpid())
 	encoder := json.NewEncoder(out)
 	for {
 		select {

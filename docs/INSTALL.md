@@ -42,6 +42,8 @@ The service enables all collectors by default. Add `--collectors` to the unit's
 If file-write volume is too high on a host, test `--file-write-min-bytes`
 before adding it to the service. A nonzero value filters smaller file writes in
 the eBPF exit probe before they enter the ring buffer.
+Runtime Guard excludes its own process PID from file-write capture so SQLite
+persistence writes do not feed back into the collector.
 
 ```sh
 sudo install -o root -g root -m 0644 \

@@ -109,6 +109,14 @@ func TestCheckedRuntimeConfigRejectsInvalidFileWriteMinimum(t *testing.T) {
 	}
 }
 
+func TestCheckedRuntimeConfigRejectsInvalidFileWriteIgnoredPID(t *testing.T) {
+	for _, pid := range []int{-1, int(maxBPFImmediate) + 1} {
+		if _, err := checkedRuntimeConfig(RuntimeConfig{FileWriteIgnorePID: pid}); err == nil {
+			t.Fatalf("file write ignored PID %d should fail", pid)
+		}
+	}
+}
+
 func TestParseCollectorNames(t *testing.T) {
 	for _, test := range []struct {
 		name  string

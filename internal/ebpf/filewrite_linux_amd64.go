@@ -31,13 +31,14 @@ const (
 )
 
 type FileWriteCollector struct {
-	host              string
-	procRoot          string
-	containerCache    *containerMetadataCache
-	ringBufferSize    int
-	fileWriteMinBytes int64
-	metrics           collectorMetrics
-	sequence          atomic.Uint64
+	host               string
+	procRoot           string
+	containerCache     *containerMetadataCache
+	ringBufferSize     int
+	fileWriteMinBytes  int64
+	fileWriteIgnorePID int
+	metrics            collectorMetrics
+	sequence           atomic.Uint64
 }
 
 type fileWriteRecord struct {
@@ -66,11 +67,12 @@ func NewFileWriteCollectorWithConfig(config RuntimeConfig) (*FileWriteCollector,
 		return nil, fmt.Errorf("read hostname: %w", err)
 	}
 	return &FileWriteCollector{
-		host:              host,
-		procRoot:          "/proc",
-		containerCache:    newContainerMetadataCache(),
-		ringBufferSize:    config.RingBufferSize,
-		fileWriteMinBytes: config.FileWriteMinBytes,
+		host:               host,
+		procRoot:           "/proc",
+		containerCache:     newContainerMetadataCache(),
+		ringBufferSize:     config.RingBufferSize,
+		fileWriteMinBytes:  config.FileWriteMinBytes,
+		fileWriteIgnorePID: config.FileWriteIgnorePID,
 	}, nil
 }
 
@@ -114,7 +116,7 @@ func (collector *FileWriteCollector) Run(ctx context.Context, sink chan<- events
 	collector.metrics.attachCorrelationDropCounter(correlationDrops)
 	defer collector.metrics.detachCorrelationDropCounter(correlationDrops)
 
-	enterProgram, err := cebpf.NewProgram(fileWriteEnterProgramSpec(pending.FD(), correlationDrops.FD()))
+	enterProgram, err := cebpf.NewProgram(fileWriteEnterProgramSpec(pending.FD(), correlationDrops.FD(), collector.fileWriteIgnorePID))
 	if err != nil {
 		return fmt.Errorf("load file write sys_enter raw tracepoint program: %w", err)
 	}
@@ -187,7 +189,7 @@ func (*FileWriteCollector) Name() string {
 	return "file_write"
 }
 
-func fileWriteEnterProgramSpec(pendingFD, correlationDropCounterFD int) *cebpf.ProgramSpec {
+func fileWriteEnterProgramSpec(pendingFD, correlationDropCounterFD, ignoredPID int) *cebpf.ProgramSpec {
 	const (
 		pidOffset     = int16(24)
 		uidOffset     = int16(28)
@@ -225,8 +227,12 @@ func fileWriteEnterProgramSpec(pendingFD, correlationDropCounterFD int) *cebpf.P
 		asm.FnGetCurrentPidTgid.Call(),
 		asm.StoreMem(asm.RFP, keyOffset, asm.R0, asm.DWord),
 		asm.RSh.Imm(asm.R0, 32),
+	)
+	if ignoredPID > 0 {
+		instructions = append(instructions, asm.JEq.Imm(asm.R0, int32(ignoredPID), "exit"))
+	}
+	instructions = append(instructions,
 		asm.StoreMem(asm.RFP, recordStart+pidOffset, asm.R0, asm.Word),
-
 		asm.FnGetCurrentUidGid.Call(),
 		asm.StoreMem(asm.RFP, recordStart+uidOffset, asm.R0, asm.Word),
 

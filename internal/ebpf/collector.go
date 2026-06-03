@@ -33,9 +33,10 @@ type NamedCollector interface {
 }
 
 type RuntimeConfig struct {
-	RingBufferSize    int
-	Collectors        []string
-	FileWriteMinBytes int64
+	RingBufferSize     int
+	Collectors         []string
+	FileWriteMinBytes  int64
+	FileWriteIgnorePID int
 }
 
 type Stats struct {
@@ -166,6 +167,12 @@ func checkedRuntimeConfig(config RuntimeConfig) (RuntimeConfig, error) {
 	}
 	if config.FileWriteMinBytes > maxBPFImmediate {
 		return RuntimeConfig{}, fmt.Errorf("file write minimum bytes must be <= %d", maxBPFImmediate)
+	}
+	if config.FileWriteIgnorePID < 0 {
+		return RuntimeConfig{}, errors.New("file write ignored PID must be non-negative")
+	}
+	if int64(config.FileWriteIgnorePID) > maxBPFImmediate {
+		return RuntimeConfig{}, fmt.Errorf("file write ignored PID must be <= %d", maxBPFImmediate)
 	}
 	return config, nil
 }

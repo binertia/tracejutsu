@@ -121,6 +121,9 @@ Implemented deterministic rules:
   service uses 16384 event and persistence queue slots, 512 events per
   persistence transaction, 8 MiB per collector ring buffer, all collectors, and
   no file-write byte floor by default.
+- Live runs exclude the runtime-guard process PID from file-write capture at
+  the eBPF entry point. This prevents SQLite persistence writes from feeding
+  back into the file-write collector and saturating the ring buffer.
 - `runtime-guard run --quiet-events` suppresses per-event JSON for service-style
   operation while still printing incidents and periodic stats.
 - `runtime-guard run --stats-interval` controls periodic runtime stats; `0`
@@ -149,7 +152,9 @@ Implemented deterministic rules:
   drops to `file_write` only, so `--file-write-min-bytes` was added for
   host-specific file-write volume control. A `4096`-byte floor reduced but did
   not eliminate file-write drops, so event summaries should be inspected before
-  choosing a higher floor or an exclusion policy.
+  choosing a higher floor or an exclusion policy. The first summary showed the
+  dominant source was runtime-guard writing its own SQLite WAL/database, so
+  self-PID exclusion was added after that result.
 - `runtime-guard show` appends an existing stored LLM analysis after the
   deterministic incident evidence when one is available.
 
