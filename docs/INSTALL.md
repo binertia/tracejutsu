@@ -120,6 +120,20 @@ that unit's private `/var/lib/runtime-guard-smoke-*` state directory, prints the
 service status or unload note plus journal, and leaves the real
 `runtime-guard.service` untouched.
 
+## Systemd Stress Test
+
+After the short smoke test passes, run a longer passive stress test under normal
+host load:
+
+```sh
+scripts/systemd-stress.sh --duration 30m --stats-interval 1m
+```
+
+The stress helper uses the same sandbox and tuned buffer settings as the
+packaged service. It does not install the service or generate artificial load.
+Track the final `runtime stats` line, CPU time, memory peak, and whether
+`ring_dropped`, `correlation_dropped`, or `persist_dropped` remain zero.
+
 ## Uninstall
 
 ```sh
