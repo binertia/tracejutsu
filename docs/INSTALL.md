@@ -143,7 +143,8 @@ packaged service. It does not install the service or generate artificial load.
 Track the final `runtime stats` line, CPU time, memory peak, and whether
 `ring_dropped`, `correlation_dropped`, or `persist_dropped` remain zero. If
 ring drops are nonzero, also capture `collector_ring_dropped` so the noisy
-collector can be tuned directly.
+collector can be tuned directly. Record whether the host was plugged in or on
+battery and whether it was idle or running other workload during the test.
 Use `event-summary` against the stress database to inspect the stored sample of
 high-volume processes and paths:
 
@@ -167,7 +168,9 @@ scripts/systemd-stress.sh --duration 10m --stats-interval 1m --collectors file_w
 
 This keeps only completed file writes whose return value is at least the
 configured byte count. It reduces ordinary small writes but can miss small
-sensitive-file edits, so treat it as a host-specific tuning decision.
+sensitive-file edits, so treat it as a host-specific tuning decision. Runtime
+Guard already excludes its own process PID from file-write capture, so test and
+inspect `event-summary` before adding a byte floor to the installed service.
 
 ## Uninstall
 

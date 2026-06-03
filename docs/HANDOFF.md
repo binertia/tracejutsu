@@ -33,6 +33,10 @@ A transient systemd sandbox smoke test passed on Debian on 2026-06-03 after the
 additional sandbox directives were added. After async SQLite batch persistence
 was added, a repeat short run processed about 51k normalized events with zero
 ring-buffer drops, zero syscall-correlation drops, and zero persistence drops.
+After runtime-guard self file writes were excluded at the eBPF entry point, a
+10-minute plugged-in idle all-collector stress run on Debian processed 8,742
+normalized events with zero ring-buffer, syscall-correlation, and persistence
+drops. That run consumed 5.747s CPU and peaked at 90.1M memory.
 
 ## Implemented MVP Surface
 
@@ -140,21 +144,16 @@ Implemented deterministic rules:
   hostname is not guaranteed to match the container-runtime display name.
 - The eBPF smoke suite covers local loopback behavior only. Broader stress
   testing across kernel versions, containers, and network namespaces remains.
-- The earlier transient systemd smoke run reported high ring-buffer drops under
-  local system-wide event load before service buffers and async SQLite batching
-  were tuned. A repeat short smoke run had zero drops, but longer stress testing
-  across busier hosts still remains open. A 30-minute stress run on Debian
-  processed about 3.6M normalized events with no persistence or correlation
-  drops, but still had about 31.5M aggregate ring-buffer drops and a 3.5G memory
-  peak. Per-collector drop breakdowns and `--collectors` were added after that
-  run to identify and isolate the noisy collector in the next stress pass. A
-  follow-up 10-minute all-collector stress run isolated the remaining ring
-  drops to `file_write` only, so `--file-write-min-bytes` was added for
-  host-specific file-write volume control. A `4096`-byte floor reduced but did
-  not eliminate file-write drops, so event summaries should be inspected before
-  choosing a higher floor or an exclusion policy. The first summary showed the
-  dominant source was runtime-guard writing its own SQLite WAL/database, so
-  self-PID exclusion was added after that result.
+- Earlier transient systemd stress runs reported high ring-buffer drops before
+  the live path was tuned. A 30-minute Debian run processed about 3.6M
+  normalized events with no persistence or correlation drops, but still had
+  about 31.5M aggregate ring-buffer drops and a 3.5G memory peak. Per-collector
+  drop breakdowns isolated the issue to `file_write`, and event summaries showed
+  the dominant source was runtime-guard writing its own SQLite WAL/database.
+  After self-PID exclusion, a plugged-in idle 10-minute all-collector stress run
+  completed with zero ring-buffer, syscall-correlation, and persistence drops.
+  Broader stress testing across busier workloads, kernel versions, containers,
+  and network namespaces remains.
 - `runtime-guard show` appends an existing stored LLM analysis after the
   deterministic incident evidence when one is available.
 
