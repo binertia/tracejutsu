@@ -22,19 +22,25 @@ StateDirectoryMode=0700
 ProtectSystem=strict
 ReadWritePaths=/var/lib/runtime-guard
 ProtectHome=read-only
+PrivateDevices=yes
 PrivateTmp=yes
 NoNewPrivileges=yes
+SystemCallArchitectures=native
 
 # Keep enough privilege for eBPF/procfs operation across common kernels while
 # removing broad capabilities not needed by the MVP.
 CapabilityBoundingSet=CAP_BPF CAP_PERFMON CAP_SYS_ADMIN CAP_SYS_RESOURCE CAP_DAC_READ_SEARCH CAP_SYS_PTRACE
 
 LockPersonality=yes
+MemoryDenyWriteExecute=yes
 ProtectClock=yes
 ProtectControlGroups=yes
+ProtectHostname=yes
 ProtectKernelLogs=yes
 ProtectKernelModules=yes
 ProtectKernelTunables=yes
+RemoveIPC=yes
+RestrictNamespaces=yes
 RestrictRealtime=yes
 RestrictSUIDSGID=yes
 

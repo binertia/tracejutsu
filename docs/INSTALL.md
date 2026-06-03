@@ -26,11 +26,14 @@ Confirm the installed binary runs:
 ## Install Systemd Service
 
 The included unit runs as root, creates `/var/lib/runtime-guard` with `0700`
-permissions. It uses `--quiet-events` and `--stats-interval 1m` so journald
-receives startup messages, incidents, and periodic stats without every
-normalized event JSON line. The private state directory matches the SQLite path
-checks in the application: the database parent directory must be owned by the
-service UID and must not permit group or other writes.
+permissions, and applies a systemd sandbox that keeps writes limited to the
+state directory, hides host devices, blocks namespace creation, restricts the
+service to the native syscall ABI, and prevents writable-executable memory. It
+uses `--quiet-events` and `--stats-interval 1m` so journald receives startup
+messages, incidents, and periodic stats without every normalized event JSON
+line. The private state directory matches the SQLite path checks in the
+application: the database parent directory must be owned by the service UID and
+must not permit group or other writes.
 
 ```sh
 sudo install -o root -g root -m 0644 \
@@ -99,6 +102,21 @@ sudo env \
   "$(command -v go)" test -tags=ebpf_smoke ./internal/ebpf \
   -run 'Test(Execve|Connect|FileWrite|Chmod)CollectorSmoke' -v
 ```
+
+## Systemd Sandbox Smoke Test
+
+After the root eBPF smoke tests pass, run the packaged sandbox settings in a
+transient unit before installing the service:
+
+```sh
+scripts/systemd-smoke.sh
+```
+
+The script builds a unique `bin/runtime-guard-smoke-*` binary and generated
+runner, starts a unique `runtime-guard-smoke-*` transient unit, writes only to
+that unit's private `/var/lib/runtime-guard-smoke-*` state directory, prints the
+service status or unload note plus journal, and leaves the real
+`runtime-guard.service` untouched.
 
 ## Uninstall
 

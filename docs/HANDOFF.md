@@ -15,6 +15,9 @@ Basic packaging assets are present for local service deployment: an install
 guide and a conservative systemd unit that stores data under
 `/var/lib/runtime-guard`, suppresses per-event JSON with `--quiet-events`, and
 prints periodic stats every minute.
+The service unit was further hardened with device isolation, native syscall ABI
+restriction, namespace creation blocking, hostname protection,
+writable-executable memory denial, and IPC cleanup.
 
 Root-only eBPF smoke tests passed on a capable Linux amd64 host on 2026-06-03,
 including after connect, file-write, and chmod syscall-exit correlation was
@@ -23,6 +26,9 @@ capture and connect syscall-exit outcome handling were added.
 An actual local `llama-server` report also completed successfully after JSON
 Schema output enforcement was added: the response decoded, persisted, and
 rendered through `runtime-guard show`.
+A transient systemd sandbox smoke test passed on Debian on 2026-06-03 after the
+additional sandbox directives were added. The short run confirmed collector
+startup and SQLite persistence under the hardened systemd settings.
 
 ## Implemented MVP Surface
 
@@ -113,6 +119,9 @@ Implemented deterministic rules:
   hostname is not guaranteed to match the container-runtime display name.
 - The eBPF smoke suite covers local loopback behavior only. Broader stress
   testing across kernel versions, containers, and network namespaces remains.
+- The transient systemd smoke run reported high ring-buffer drops under local
+  system-wide event load. This does not indicate sandbox failure, but throughput
+  tuning and longer stress testing remain open.
 - `runtime-guard show` appends an existing stored LLM analysis after the
   deterministic incident evidence when one is available.
 
@@ -157,6 +166,12 @@ sudo env \
   GOMODCACHE="$(go env GOMODCACHE)" \
   "$(command -v go)" test -tags=ebpf_smoke ./internal/ebpf \
   -run 'TestConnectCollectorSmoke' -v
+```
+
+The current systemd sandbox smoke helper also passed on 2026-06-03:
+
+```sh
+scripts/systemd-smoke.sh
 ```
 
 Run the non-root fake pipeline:

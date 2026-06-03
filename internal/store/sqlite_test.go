@@ -230,6 +230,54 @@ func TestOpenSQLiteRejectsSymlinkDatabasePath(t *testing.T) {
 	}
 }
 
+func TestOpenSQLiteRejectsPermissiveExistingSidecar(t *testing.T) {
+	path := filepath.Join(privateTempDir(t), "runtime-guard.db")
+	if err := os.WriteFile(path, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	sidecar := path + "-wal"
+	if err := os.WriteFile(sidecar, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(sidecar, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := store.OpenSQLite(path); err == nil {
+		t.Fatal("expected permissive SQLite sidecar rejection")
+	}
+}
+
+func TestOpenSQLiteRejectsSymlinkSidecar(t *testing.T) {
+	directory := privateTempDir(t)
+	path := filepath.Join(directory, "runtime-guard.db")
+	if err := os.WriteFile(path, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(directory, "sidecar-target")
+	if err := os.WriteFile(target, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, path+"-shm"); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := store.OpenSQLite(path); err == nil {
+		t.Fatal("expected symlink SQLite sidecar rejection")
+	}
+}
+
+func TestOpenSQLiteRejectsOrphanedSidecar(t *testing.T) {
+	path := filepath.Join(privateTempDir(t), "runtime-guard.db")
+	if err := os.WriteFile(path+"-wal", nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := store.OpenSQLite(path); err == nil {
+		t.Fatal("expected orphaned SQLite sidecar rejection")
+	}
+}
+
 func TestOpenSQLiteUpgradesLegacyIncidentSchema(t *testing.T) {
 	path := filepath.Join(privateTempDir(t), "runtime-guard.db")
 	database, err := sql.Open("sqlite3", path)

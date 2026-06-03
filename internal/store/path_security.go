@@ -22,10 +22,16 @@ func prepareSQLitePath(path string) error {
 
 	info, err := os.Lstat(path)
 	if err == nil {
+		if err := validateSQLiteSidecars(path); err != nil {
+			return err
+		}
 		return validateSQLiteFileInfo(path, info)
 	}
 	if !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("inspect SQLite database path: %w", err)
+	}
+	if err := rejectSQLiteSidecars(path); err != nil {
+		return err
 	}
 
 	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o600)
@@ -71,7 +77,10 @@ func validateSQLiteFile(path string) error {
 	if err != nil {
 		return fmt.Errorf("inspect SQLite database path after open: %w", err)
 	}
-	return validateSQLiteFileInfo(path, info)
+	if err := validateSQLiteFileInfo(path, info); err != nil {
+		return err
+	}
+	return validateSQLiteSidecars(path)
 }
 
 func validateSQLiteFileInfo(path string, info os.FileInfo) error {
@@ -83,4 +92,38 @@ func validateSQLiteFileInfo(path string, info os.FileInfo) error {
 			info.Mode().Perm(), path)
 	}
 	return nil
+}
+
+func validateSQLiteSidecars(path string) error {
+	for _, sidecar := range sqliteSidecarPaths(path) {
+		info, err := os.Lstat(sidecar)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return fmt.Errorf("inspect SQLite sidecar path: %w", err)
+		}
+		if err := validateSQLiteFileInfo(sidecar, info); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func rejectSQLiteSidecars(path string) error {
+	for _, sidecar := range sqliteSidecarPaths(path) {
+		_, err := os.Lstat(sidecar)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return fmt.Errorf("inspect SQLite sidecar path: %w", err)
+		}
+		return fmt.Errorf("SQLite sidecar exists without database: %q", sidecar)
+	}
+	return nil
+}
+
+func sqliteSidecarPaths(path string) []string {
+	return []string{path + "-wal", path + "-shm"}
 }
