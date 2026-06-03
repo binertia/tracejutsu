@@ -2,8 +2,10 @@ package detect
 
 import (
 	"fmt"
+	"net"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"runtime-guard/internal/events"
@@ -109,7 +111,7 @@ func (Basic) Analyze(normalizedEvents []events.Event) Result {
 			if artifact, found := downloadedProcessPIDs[event.PID]; found {
 				result.add(signal("downloaded_binary_connected_outbound", 35,
 					appendEvents(artifact.downloadEvents, artifact.executionEvent, event),
-					fmt.Sprintf("%s connected to %s:%d", event.ProcessName, event.RemoteAddr, event.RemotePort)))
+					fmt.Sprintf("%s connected to %s", event.ProcessName, remoteEndpoint(event))))
 			}
 			connectionKey := fmt.Sprintf("%d:%s:%d", event.PID, event.RemoteAddr, event.RemotePort)
 			if isShellConnection(event) && isUnusualOutboundPort(event.RemotePort) && !reverseShellConnections[connectionKey] {
@@ -118,8 +120,8 @@ func (Basic) Analyze(normalizedEvents []events.Event) Result {
 					supportingEvents = []events.Event{shellEvent, event}
 				}
 				result.add(signal("suspicious_reverse_shell_pattern", 50, supportingEvents,
-					fmt.Sprintf("shell %s connected to unusual outbound endpoint %s:%d",
-						event.ProcessName, event.RemoteAddr, event.RemotePort)))
+					fmt.Sprintf("shell %s connected to unusual outbound endpoint %s",
+						event.ProcessName, remoteEndpoint(event))))
 				reverseShellConnections[connectionKey] = true
 			}
 		}
@@ -311,4 +313,8 @@ func fileWriteChanged(event events.Event) bool {
 	default:
 		return false
 	}
+}
+
+func remoteEndpoint(event events.Event) string {
+	return net.JoinHostPort(event.RemoteAddr, strconv.Itoa(event.RemotePort))
 }

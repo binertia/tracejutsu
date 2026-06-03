@@ -201,7 +201,7 @@ func runLive(args []string, out io.Writer) (err error) {
 	statsTicker := time.NewTicker(defaultStatsInterval)
 	defer statsTicker.Stop()
 
-	fmt.Fprintln(out, "runtime-guard: collecting execve, IPv4 connect, file write, and chmod events; press Ctrl-C to stop")
+	fmt.Fprintln(out, "runtime-guard: collecting execve, IPv4/IPv6 connect, file write, and chmod events; press Ctrl-C to stop")
 	encoder := json.NewEncoder(out)
 	for {
 		select {

@@ -3,8 +3,10 @@ package compress
 import (
 	"errors"
 	"fmt"
+	"net"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"time"
 
 	"runtime-guard/internal/detect"
@@ -142,8 +144,8 @@ func timeline(normalizedEvents []events.Event) []string {
 			entries = append(entries, fmt.Sprintf("%s wrote %s %d times",
 				event.ProcessName, event.FilePath, writeCounts[key]))
 		case events.TypeConnect:
-			entries = append(entries, fmt.Sprintf("%s connected to %s:%d",
-				displayExecutable(event), event.RemoteAddr, event.RemotePort))
+			entries = append(entries, fmt.Sprintf("%s connected to %s",
+				displayExecutable(event), remoteEndpoint(event)))
 		}
 	}
 	return entries
@@ -240,4 +242,8 @@ func fileWriteChanged(event events.Event) bool {
 	default:
 		return false
 	}
+}
+
+func remoteEndpoint(event events.Event) string {
+	return net.JoinHostPort(event.RemoteAddr, strconv.Itoa(event.RemotePort))
 }

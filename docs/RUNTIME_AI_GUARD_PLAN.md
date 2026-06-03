@@ -637,11 +637,11 @@ The fake-event pipeline is a prerequisite for full eBPF work. It provides fast f
 
 Current implementation note: the live CLI prints these counters every 10
 seconds and at shutdown. Kernel ring-buffer output failures are counted in BPF
-array maps. File-write and chmod probes correlate syscall entry and exit using
-bounded BPF hash maps; failed correlation inserts are also counted and exposed.
-Async event persistence is bounded, and incident transactions upsert their
-supporting evidence before linking it so queue timing cannot break incident
-storage.
+array maps. Connect capture covers IPv4 and IPv6 syscall-entry attempts.
+File-write and chmod probes correlate syscall entry and exit using bounded BPF
+hash maps; failed correlation inserts are also counted and exposed. Async event
+persistence is bounded, and incident transactions upsert their supporting
+evidence before linking it so queue timing cannot break incident storage.
 
 ## 19. Definition of Done for MVP
 

@@ -10,7 +10,7 @@ go run ./cmd/runtime-guard demo
 go test ./...
 ```
 
-On Linux amd64, the live sensor streams normalized `execve`, IPv4 `connect`,
+On Linux amd64, the live sensor streams normalized `execve`, IPv4/IPv6 `connect`,
 path-backed file write, and `chmod` events as JSON. It uses raw
 tracepoints and requires root or equivalent eBPF capabilities:
 
@@ -19,11 +19,11 @@ sudo go run ./cmd/runtime-guard run
 sudo go test -tags=ebpf_smoke ./internal/ebpf -run 'Test(Execve|Connect|FileWrite|Chmod)CollectorSmoke'
 ```
 
-The live collectors are assembled in Go, so they do not require `clang`. IPv6
-collection is pending. File write and `chmod` probes correlate syscall entry
-and exit with bounded in-kernel maps, then report `success` or `failed`
-outcomes. A requested chmod execute bit does not prove that the bit was newly
-added.
+The live collectors are assembled in Go, so they do not require `clang`.
+`connect` records capture syscall-entry attempts. File write and `chmod` probes
+correlate syscall entry and exit with bounded in-kernel maps, then report
+`success` or `failed` outcomes. A requested chmod execute bit does not prove
+that the bit was newly added.
 
 Persist the fake pipeline to a local SQLite database and inspect the result:
 

@@ -12,6 +12,8 @@ local LLM client is wired through the CLI.
 
 Root-only eBPF smoke tests passed on a capable Linux amd64 host on 2026-06-03,
 including after file-write and chmod syscall-exit correlation was added.
+IPv4 and IPv6 connect smoke subtests also passed after IPv6 sockaddr capture
+was added.
 An actual local `llama-server` report also completed successfully after JSON
 Schema output enforcement was added: the response decoded, persisted, and
 rendered through `runtime-guard show`.
@@ -34,7 +36,7 @@ eBPF raw tracepoints
 Implemented live Linux amd64 collectors:
 
 - `execve`
-- IPv4 `connect`
+- IPv4 and IPv6 `connect`
 - path-backed `write`, `writev`, `pwrite64`, `pwritev`, and `pwritev2`
 - `chmod`, `fchmod`, `fchmodat`, and `fchmodat2`
 
@@ -42,6 +44,8 @@ File write and chmod probes correlate syscall entry and exit with bounded
 in-kernel maps. Emitted records include the syscall return value, errno, and a
 `success` or `failed` outcome. A requested chmod execute bit does not prove
 that the bit was newly added.
+Connect records currently represent syscall-entry attempts to IPv4 or IPv6
+endpoints.
 
 Implemented deterministic rules:
 
@@ -88,7 +92,8 @@ Implemented deterministic rules:
 - Container fields are populated best-effort from procfs cgroup and container
   hostname data when available. This is a bounded PID/start-time cache; the
   hostname is not guaranteed to match the container-runtime display name.
-- IPv6 connection capture is not implemented.
+- Connect success/failure is not tracked yet; connection events represent
+  attempts observed at syscall entry.
 - `runtime-guard show` appends an existing stored LLM analysis after the
   deterministic incident evidence when one is available.
 
@@ -143,8 +148,8 @@ go run ./cmd/runtime-guard show --db "$DB" inc-evt-001
 
 ## Recommended Next Task
 
-Add IPv6 `connect` capture and update connection normalization/tests so outbound
-incident timelines can cover both IPv4 and IPv6 endpoints.
+Track syscall exits for `connect` so outbound network events can distinguish
+attempted connections from successful or failed connections.
 
 ## File Map
 

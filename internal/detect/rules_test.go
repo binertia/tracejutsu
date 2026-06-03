@@ -3,6 +3,7 @@ package detect_test
 import (
 	"os"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -160,6 +161,28 @@ func TestBasicAnalyzeIgnoresFailedAndEmptyMutations(t *testing.T) {
 	result := detect.NewBasic().Analyze(normalizedEvents)
 	if len(result.Signals) != 0 {
 		t.Fatalf("signals = %+v, want none for failed or empty mutations", result.Signals)
+	}
+}
+
+func TestBasicAnalyzeFormatsIPv6EndpointEvidence(t *testing.T) {
+	normalizedEvents := []events.Event{
+		{
+			EventID:        "evt-ipv6-shell-connect",
+			Timestamp:      time.Date(2026, time.June, 2, 12, 0, 0, 0, time.UTC),
+			Host:           "devbox-01",
+			PID:            6001,
+			ProcessName:    "bash",
+			EventType:      events.TypeConnect,
+			ExecutablePath: "/usr/bin/bash",
+			RemoteAddr:     "2001:db8::5",
+			RemotePort:     4444,
+		},
+	}
+
+	result := detect.NewBasic().Analyze(normalizedEvents)
+	signal := signalByRuleID(t, result, "suspicious_reverse_shell_pattern")
+	if want := "[2001:db8::5]:4444"; !strings.Contains(signal.Evidence, want) {
+		t.Fatalf("evidence = %q, want IPv6 endpoint %q", signal.Evidence, want)
 	}
 }
 

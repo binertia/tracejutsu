@@ -4,6 +4,7 @@ package ebpf
 
 import (
 	"encoding/binary"
+	"net"
 	"os"
 	"path/filepath"
 	"testing"
@@ -49,12 +50,37 @@ func TestNormalizeConnectRecord(t *testing.T) {
 	}
 }
 
-func TestNormalizeConnectRecordSkipsNonIPv4(t *testing.T) {
+func TestNormalizeConnectRecordIPv6(t *testing.T) {
+	raw := connectRecord{KernelTimestampNS: 123456, PID: 4131, UID: 33}
+	copy(raw.Comm[:], "payload")
+	binary.LittleEndian.PutUint16(raw.Sockaddr[0:2], addressFamilyIPv6)
+	binary.BigEndian.PutUint16(raw.Sockaddr[2:4], 4444)
+	binary.LittleEndian.PutUint32(raw.Sockaddr[24:28], 7)
+	copy(raw.Sockaddr[8:24], net.ParseIP("2001:db8::5").To16())
+
+	collector := &ConnectCollector{host: "devbox-01", procRoot: t.TempDir()}
+	event, ok := collector.normalize(raw)
+	if !ok {
+		t.Fatal("expected IPv6 event to be normalized")
+	}
+
+	if event.RemoteAddr != "2001:db8::5" || event.RemotePort != 4444 {
+		t.Fatalf("remote endpoint = %s:%d, want [2001:db8::5]:4444", event.RemoteAddr, event.RemotePort)
+	}
+	if got := event.Metadata["address_family"]; got != "AF_INET6" {
+		t.Fatalf("address family = %#v, want AF_INET6", got)
+	}
+	if got := event.Metadata["scope_id"]; got != uint32(7) {
+		t.Fatalf("scope ID = %#v, want uint32(7)", got)
+	}
+}
+
+func TestNormalizeConnectRecordSkipsUnsupportedFamily(t *testing.T) {
 	raw := connectRecord{}
-	binary.LittleEndian.PutUint16(raw.Sockaddr[0:2], 10)
+	binary.LittleEndian.PutUint16(raw.Sockaddr[0:2], 1)
 
 	collector := &ConnectCollector{}
 	if _, ok := collector.normalize(raw); ok {
-		t.Fatal("expected non-IPv4 socket address to be skipped")
+		t.Fatal("expected unsupported socket address to be skipped")
 	}
 }

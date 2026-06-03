@@ -17,8 +17,21 @@ func TestConnectCollectorSmoke(t *testing.T) {
 		t.Skip("root privileges are required for the eBPF smoke test")
 	}
 
-	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	t.Run("IPv4", func(t *testing.T) {
+		testConnectCollectorSmoke(t, "tcp4", "127.0.0.1:0", "127.0.0.1")
+	})
+	t.Run("IPv6", func(t *testing.T) {
+		testConnectCollectorSmoke(t, "tcp6", "[::1]:0", "::1")
+	})
+}
+
+func testConnectCollectorSmoke(t *testing.T, network, listenAddress, expectedAddress string) {
+	t.Helper()
+	listener, err := net.Listen(network, listenAddress)
 	if err != nil {
+		if network == "tcp6" {
+			t.Skipf("IPv6 loopback is not available: %v", err)
+		}
 		t.Fatal(err)
 	}
 	defer listener.Close()
@@ -42,7 +55,7 @@ func TestConnectCollectorSmoke(t *testing.T) {
 	for {
 		select {
 		case event := <-sink:
-			if event.RemoteAddr == "127.0.0.1" && event.RemotePort == endpoint.Port {
+			if event.RemoteAddr == expectedAddress && event.RemotePort == endpoint.Port {
 				cancel()
 				return
 			}
@@ -52,12 +65,12 @@ func TestConnectCollectorSmoke(t *testing.T) {
 			}
 			t.Fatal("collector stopped before observing the test connection")
 		case <-ticker.C:
-			connection, err := net.DialTimeout("tcp4", listener.Addr().String(), time.Second)
+			connection, err := net.DialTimeout(network, listener.Addr().String(), time.Second)
 			if err == nil {
 				connection.Close()
 			}
 		case <-ctx.Done():
-			t.Fatal("timed out waiting for IPv4 connect event")
+			t.Fatalf("timed out waiting for %s connect event", network)
 		}
 	}
 }

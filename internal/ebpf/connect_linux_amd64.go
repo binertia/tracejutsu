@@ -27,7 +27,11 @@ const (
 	connectSyscallNumber = 42
 	ptRegsSIOffset       = 104
 	addressFamilyIPv4    = 2
+	addressFamilyIPv6    = 10
+	sockaddrFamilySize   = 2
 	sockaddrIPv4Size     = 16
+	sockaddrIPv6Size     = 28
+	sockaddrStorageSize  = 32
 )
 
 type ConnectCollector struct {
@@ -43,7 +47,7 @@ type connectRecord struct {
 	PID               uint32
 	UID               uint32
 	Comm              [commSize]byte
-	Sockaddr          [sockaddrIPv4Size]byte
+	Sockaddr          [sockaddrStorageSize]byte
 }
 
 func NewConnectCollector() (*ConnectCollector, error) {
@@ -74,8 +78,8 @@ func NewRuntimeCollector() (Collector, error) {
 	return NewCompositeCollector(execve, connect, fileWrite, chmod), nil
 }
 
-// Run attaches an amd64 raw tracepoint collector and emits normalized IPv4
-// connect attempts until the context is canceled.
+// Run attaches an amd64 raw tracepoint collector and emits normalized IPv4 and
+// IPv6 connect attempts until the context is canceled.
 func (collector *ConnectCollector) Run(ctx context.Context, sink chan<- events.Event) error {
 	if sink == nil {
 		return errors.New("event sink is required")
@@ -203,13 +207,33 @@ func connectProgramSpec(ringBufferFD, dropCounterFD int) *cebpf.ProgramSpec {
 		asm.LoadMem(asm.R3, asm.RFP, tempPointer, asm.DWord),
 		asm.Mov.Reg(asm.R1, asm.RFP),
 		asm.Add.Imm(asm.R1, int32(recordStart+sockaddrOffset)),
-		asm.Mov.Imm(asm.R2, sockaddrIPv4Size),
+		asm.Mov.Imm(asm.R2, sockaddrFamilySize),
 		asm.FnProbeReadUser.Call(),
 
 		asm.LoadMem(asm.R7, asm.RFP, recordStart+sockaddrOffset, asm.Half),
-		asm.JNE.Imm(asm.R7, addressFamilyIPv4, "exit"),
+		asm.JEq.Imm(asm.R7, addressFamilyIPv4, "read_ipv4"),
+		asm.JEq.Imm(asm.R7, addressFamilyIPv6, "read_ipv6"),
+		asm.Ja.Label("exit"),
+	)
 
-		asm.LoadMapPtr(asm.R1, ringBufferFD),
+	instructions = append(instructions,
+		asm.LoadMem(asm.R3, asm.RFP, tempPointer, asm.DWord).WithSymbol("read_ipv4"),
+		asm.Mov.Reg(asm.R1, asm.RFP),
+		asm.Add.Imm(asm.R1, int32(recordStart+sockaddrOffset)),
+		asm.Mov.Imm(asm.R2, sockaddrIPv4Size),
+		asm.FnProbeReadUser.Call(),
+		asm.Ja.Label("emit"),
+	)
+	instructions = append(instructions,
+		asm.LoadMem(asm.R3, asm.RFP, tempPointer, asm.DWord).WithSymbol("read_ipv6"),
+		asm.Mov.Reg(asm.R1, asm.RFP),
+		asm.Add.Imm(asm.R1, int32(recordStart+sockaddrOffset)),
+		asm.Mov.Imm(asm.R2, sockaddrIPv6Size),
+		asm.FnProbeReadUser.Call(),
+		asm.Ja.Label("emit"),
+	)
+	instructions = append(instructions,
+		asm.LoadMapPtr(asm.R1, ringBufferFD).WithSymbol("emit"),
 		asm.Mov.Reg(asm.R2, asm.RFP),
 		asm.Add.Imm(asm.R2, int32(recordStart)),
 		asm.Mov.Imm(asm.R3, int32(recordSize)),
@@ -242,7 +266,8 @@ func decodeConnectRecord(raw []byte) (connectRecord, error) {
 }
 
 func (collector *ConnectCollector) normalize(raw connectRecord) (events.Event, bool) {
-	if binary.LittleEndian.Uint16(raw.Sockaddr[0:2]) != addressFamilyIPv4 {
+	remoteAddr, remotePort, addressFamily, metadata, ok := decodeSockaddr(raw.Sockaddr)
+	if !ok {
 		return events.Event{}, false
 	}
 
@@ -267,14 +292,43 @@ func (collector *ConnectCollector) normalize(raw connectRecord) (events.Event, b
 		EventType:         events.TypeConnect,
 		ExecutablePath:    executablePath,
 		CWD:               readProcCWD(collector.procRoot, pid),
-		RemoteAddr:        net.IP(raw.Sockaddr[4:8]).String(),
-		RemotePort:        int(binary.BigEndian.Uint16(raw.Sockaddr[2:4])),
+		RemoteAddr:        remoteAddr,
+		RemotePort:        remotePort,
 		Metadata: map[string]any{
 			"source":              "ebpf_raw_tracepoint_sys_enter",
 			"kernel_timestamp_ns": raw.KernelTimestampNS,
-			"address_family":      "AF_INET",
+			"address_family":      addressFamily,
 		},
+	}
+	for key, value := range metadata {
+		event.Metadata[key] = value
 	}
 	enrichContainerMetadata(&event, collector.procRoot, pid, collector.containerCache)
 	return event, true
+}
+
+func decodeSockaddr(raw [sockaddrStorageSize]byte) (string, int, string, map[string]any, bool) {
+	switch family := binary.LittleEndian.Uint16(raw[0:2]); family {
+	case addressFamilyIPv4:
+		return net.IP(raw[4:8]).String(),
+			int(binary.BigEndian.Uint16(raw[2:4])),
+			"AF_INET",
+			nil,
+			true
+	case addressFamilyIPv6:
+		metadata := make(map[string]any)
+		if flowInfo := binary.LittleEndian.Uint32(raw[4:8]); flowInfo != 0 {
+			metadata["flowinfo"] = flowInfo
+		}
+		if scopeID := binary.LittleEndian.Uint32(raw[24:28]); scopeID != 0 {
+			metadata["scope_id"] = scopeID
+		}
+		return net.IP(raw[8:24]).String(),
+			int(binary.BigEndian.Uint16(raw[2:4])),
+			"AF_INET6",
+			metadata,
+			true
+	default:
+		return "", 0, "", nil, false
+	}
 }

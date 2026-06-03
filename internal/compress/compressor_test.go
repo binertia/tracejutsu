@@ -138,3 +138,28 @@ func TestCompressNarratesFailedMutationsAsFailures(t *testing.T) {
 		t.Fatalf("timeline = %v, want %v", incident.Timeline, want)
 	}
 }
+
+func TestCompressFormatsIPv6Endpoint(t *testing.T) {
+	normalizedEvents := []events.Event{
+		{
+			EventID:        "evt-ipv6-connect",
+			Timestamp:      time.Date(2026, time.June, 2, 12, 0, 0, 0, time.UTC),
+			Host:           "devbox-01",
+			PID:            6001,
+			ProcessName:    "payload",
+			EventType:      events.TypeConnect,
+			ExecutablePath: "/tmp/payload",
+			RemoteAddr:     "2001:db8::5",
+			RemotePort:     4444,
+		},
+	}
+
+	incident, err := compress.NewBasic().Compress(normalizedEvents, detect.Result{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const want = "/tmp/payload connected to [2001:db8::5]:4444"
+	if !slices.Contains(incident.Timeline, want) {
+		t.Fatalf("timeline = %v, want entry %q", incident.Timeline, want)
+	}
+}
