@@ -11,7 +11,8 @@ present, the live event path uses a bounded async persistence queue, and the
 local LLM client is wired through the CLI.
 Basic packaging assets are present for local service deployment: an install
 guide and a conservative systemd unit that stores data under
-`/var/lib/runtime-guard` and suppresses per-event JSON with `--quiet-events`.
+`/var/lib/runtime-guard`, suppresses per-event JSON with `--quiet-events`, and
+prints periodic stats every minute.
 
 Root-only eBPF smoke tests passed on a capable Linux amd64 host on 2026-06-03,
 including after connect, file-write, and chmod syscall-exit correlation was
@@ -84,9 +85,11 @@ Implemented deterministic rules:
   one transaction, independent of async event-queue timing.
 - The live CLI reports normalized, grouped, analyzed, incident, kernel
   ring-buffer-drop, syscall-correlation-drop, and event-persistence counters
-  every 10 seconds and at shutdown.
+  every 10 seconds by default and at shutdown.
 - `runtime-guard run --quiet-events` suppresses per-event JSON for service-style
   operation while still printing incidents and periodic stats.
+- `runtime-guard run --stats-interval` controls periodic runtime stats; `0`
+  disables periodic stats while preserving final shutdown stats.
 - The MVP never automatically kills, blocks, or remediates processes.
 
 ## Known Limitations

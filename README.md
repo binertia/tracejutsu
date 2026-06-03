@@ -48,11 +48,13 @@ for an incident is upserted transactionally before links are created. A bounded 
 processor groups live process trees and flushes inactive candidates into
 deterministic incidents. Tune its default 15-second inactivity threshold with
 `--flush-after`. Use `--quiet-events` for service-style runs that should print
-incidents and stats without per-event JSON. Active candidates retain at most
-4096 recent events each and 65536 events in total. Compressed incident reports
-expose dropped older events. Live collection prints ingestion, analysis,
-persistence, kernel ring-buffer drop, and syscall-correlation-drop counters
-every 10 seconds and at shutdown.
+incidents and stats without per-event JSON. Tune periodic stats with
+`--stats-interval`; `0` disables periodic stats but still prints final shutdown
+stats. Active candidates retain at most 4096 recent events each and 65536
+events in total. Compressed incident reports expose dropped older events. Live
+collection prints ingestion, analysis, persistence, kernel ring-buffer drop,
+and syscall-correlation-drop counters every 10 seconds by default and at
+shutdown.
 
 Analyze a stored incident with a local `llama-server`-compatible HTTP endpoint:
 

@@ -148,9 +148,17 @@ func runLive(args []string, out io.Writer) (err error) {
 	flags.SetOutput(io.Discard)
 	databasePath := flags.String("db", "", "persist normalized events to a SQLite database")
 	flushAfter := flags.Duration("flush-after", pipeline.DefaultInactivityTimeout, "flush inactive process trees after this duration")
+	statsInterval := flags.Duration("stats-interval", defaultStatsInterval, "print runtime stats at this interval; 0 disables periodic stats")
 	quietEvents := flags.Bool("quiet-events", false, "suppress per-event JSON output")
 	if err := flags.Parse(args); err != nil || len(flags.Args()) != 0 {
-		return errors.New("usage: runtime-guard run [--db path] [--flush-after duration] [--quiet-events]")
+		return errors.New("usage: runtime-guard run [--db path] [--flush-after duration] [--stats-interval duration] [--quiet-events]")
+	}
+	statsTicker, statsTicks, err := optionalTicker(*statsInterval)
+	if err != nil {
+		return err
+	}
+	if statsTicker != nil {
+		defer statsTicker.Stop()
 	}
 
 	collector, err := sensor.NewRuntimeCollector()
@@ -199,10 +207,9 @@ func runLive(args []string, out io.Writer) (err error) {
 
 	flushTicker := time.NewTicker(time.Second)
 	defer flushTicker.Stop()
-	statsTicker := time.NewTicker(defaultStatsInterval)
-	defer statsTicker.Stop()
 
-	fmt.Fprintf(out, "runtime-guard: collecting execve, IPv4/IPv6 connect, file write, and chmod events; quiet_events=%t; press Ctrl-C to stop\n", *quietEvents)
+	fmt.Fprintf(out, "runtime-guard: collecting execve, IPv4/IPv6 connect, file write, and chmod events; quiet_events=%t stats_interval=%s; press Ctrl-C to stop\n",
+		*quietEvents, statsIntervalLabel(*statsInterval))
 	encoder := json.NewEncoder(out)
 	for {
 		select {
@@ -244,10 +251,28 @@ func runLive(args []string, out io.Writer) (err error) {
 			}
 		case err := <-eventQueueErrors:
 			return err
-		case <-statsTicker.C:
+		case <-statsTicks:
 			writeLiveStats(out, collector, processor, eventQueue, normalizedEvents)
 		}
 	}
+}
+
+func optionalTicker(interval time.Duration) (*time.Ticker, <-chan time.Time, error) {
+	if interval < 0 {
+		return nil, nil, errors.New("stats interval must be zero or positive")
+	}
+	if interval == 0 {
+		return nil, nil, nil
+	}
+	ticker := time.NewTicker(interval)
+	return ticker, ticker.C, nil
+}
+
+func statsIntervalLabel(interval time.Duration) string {
+	if interval == 0 {
+		return "disabled"
+	}
+	return interval.String()
 }
 
 func writeLiveEvent(encoder *json.Encoder, event events.Event, quiet bool) error {
@@ -456,7 +481,7 @@ func writeUsage(out io.Writer) {
 
 Usage:
   runtime-guard demo [--db path] [fixture.json]       Run the fake-event incident pipeline
-  runtime-guard run [--db path] [--flush-after time] [--quiet-events]
+  runtime-guard run [--db path] [--flush-after time] [--stats-interval time] [--quiet-events]
                                                        Stream live runtime events and detect incidents (Linux amd64, root)
   runtime-guard events [--db path] [--limit count]    List stored normalized events
   runtime-guard incidents [--db path] [--limit count] List stored incidents

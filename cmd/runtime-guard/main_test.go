@@ -103,6 +103,38 @@ func TestWriteLiveEventHonorsQuietMode(t *testing.T) {
 	}
 }
 
+func TestOptionalTicker(t *testing.T) {
+	ticker, ticks, err := optionalTicker(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ticker != nil || ticks != nil {
+		t.Fatalf("disabled ticker = (%v, %v), want nil ticker and nil channel", ticker, ticks)
+	}
+
+	ticker, ticks, err = optionalTicker(time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ticker.Stop()
+	if ticker == nil || ticks == nil {
+		t.Fatalf("enabled ticker = (%v, %v), want ticker and channel", ticker, ticks)
+	}
+
+	if _, _, err := optionalTicker(-time.Second); err == nil {
+		t.Fatal("expected negative interval to fail")
+	}
+}
+
+func TestStatsIntervalLabel(t *testing.T) {
+	if got := statsIntervalLabel(0); got != "disabled" {
+		t.Fatalf("disabled label = %q, want disabled", got)
+	}
+	if got := statsIntervalLabel(2 * time.Minute); got != "2m0s" {
+		t.Fatalf("duration label = %q, want 2m0s", got)
+	}
+}
+
 func TestRunLLMAnalyzesStoredIncident(t *testing.T) {
 	databaseDirectory := t.TempDir()
 	if err := os.Chmod(databaseDirectory, 0o700); err != nil {

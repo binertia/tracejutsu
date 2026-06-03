@@ -26,11 +26,11 @@ Confirm the installed binary runs:
 ## Install Systemd Service
 
 The included unit runs as root, creates `/var/lib/runtime-guard` with `0700`
-permissions, and uses `--quiet-events` so journald receives startup messages,
-incidents, and stats without every normalized event JSON line. The private state
-directory matches the SQLite path checks in the application: the database parent
-directory must be owned by the service UID and must not permit group or other
-writes.
+permissions. It uses `--quiet-events` and `--stats-interval 1m` so journald
+receives startup messages, incidents, and periodic stats without every
+normalized event JSON line. The private state directory matches the SQLite path
+checks in the application: the database parent directory must be owned by the
+service UID and must not permit group or other writes.
 
 ```sh
 sudo install -o root -g root -m 0644 \
