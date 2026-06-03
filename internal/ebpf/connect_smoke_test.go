@@ -55,7 +55,9 @@ func testConnectCollectorSmoke(t *testing.T, network, listenAddress, expectedAdd
 	for {
 		select {
 		case event := <-sink:
-			if event.RemoteAddr == expectedAddress && event.RemotePort == endpoint.Port {
+			if event.RemoteAddr == expectedAddress &&
+				event.RemotePort == endpoint.Port &&
+				connectSmokeOutcomeAccepted(event) {
 				cancel()
 				return
 			}
@@ -72,5 +74,14 @@ func testConnectCollectorSmoke(t *testing.T, network, listenAddress, expectedAdd
 		case <-ctx.Done():
 			t.Fatalf("timed out waiting for %s connect event", network)
 		}
+	}
+}
+
+func connectSmokeOutcomeAccepted(event events.Event) bool {
+	switch event.Metadata["outcome"] {
+	case "success", "in_progress":
+		return true
+	default:
+		return false
 	}
 }

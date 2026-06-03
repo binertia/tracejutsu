@@ -13,7 +13,8 @@ import (
 func TestProgramSpecsMarshal(t *testing.T) {
 	specs := map[string]*ebpf.ProgramSpec{
 		"execve":           execveProgramSpec(1, 2),
-		"connect":          connectProgramSpec(1, 2),
+		"connect_enter":    connectEnterProgramSpec(3, 4),
+		"connect_exit":     connectExitProgramSpec(1, 2, 3),
 		"file_write_enter": fileWriteEnterProgramSpec(3, 4),
 		"file_write_exit":  fileWriteExitProgramSpec(1, 2, 3),
 		"chmod_enter":      chmodEnterProgramSpec(3, 4),

@@ -144,6 +144,16 @@ func timeline(normalizedEvents []events.Event) []string {
 			entries = append(entries, fmt.Sprintf("%s wrote %s %d times",
 				event.ProcessName, event.FilePath, writeCounts[key]))
 		case events.TypeConnect:
+			switch event.Metadata["outcome"] {
+			case "failed":
+				entries = append(entries, fmt.Sprintf("%s failed to connect to %s",
+					displayExecutable(event), remoteEndpoint(event)))
+				continue
+			case "in_progress":
+				entries = append(entries, fmt.Sprintf("%s started connecting to %s",
+					displayExecutable(event), remoteEndpoint(event)))
+				continue
+			}
 			entries = append(entries, fmt.Sprintf("%s connected to %s",
 				displayExecutable(event), remoteEndpoint(event)))
 		}

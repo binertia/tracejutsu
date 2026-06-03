@@ -24,14 +24,16 @@ import (
 )
 
 const (
-	connectSyscallNumber = 42
-	ptRegsSIOffset       = 104
-	addressFamilyIPv4    = 2
-	addressFamilyIPv6    = 10
-	sockaddrFamilySize   = 2
-	sockaddrIPv4Size     = 16
-	sockaddrIPv6Size     = 28
-	sockaddrStorageSize  = 32
+	connectSyscallNumber     = 42
+	ptRegsSIOffset           = 104
+	addressFamilyIPv4        = 2
+	addressFamilyIPv6        = 10
+	sockaddrFamilySize       = 2
+	sockaddrIPv4Size         = 16
+	sockaddrIPv6Size         = 28
+	sockaddrStorageSize      = 32
+	errnoOperationInProgress = 115
+	errnoOperationAlready    = 114
 )
 
 type ConnectCollector struct {
@@ -43,11 +45,13 @@ type ConnectCollector struct {
 }
 
 type connectRecord struct {
-	KernelTimestampNS uint64
-	PID               uint32
-	UID               uint32
-	Comm              [commSize]byte
-	Sockaddr          [sockaddrStorageSize]byte
+	KernelTimestampNS           uint64
+	CompletionKernelTimestampNS uint64
+	ReturnValue                 int64
+	PID                         uint32
+	UID                         uint32
+	Comm                        [commSize]byte
+	Sockaddr                    [sockaddrStorageSize]byte
 }
 
 func NewConnectCollector() (*ConnectCollector, error) {
@@ -78,8 +82,8 @@ func NewRuntimeCollector() (Collector, error) {
 	return NewCompositeCollector(execve, connect, fileWrite, chmod), nil
 }
 
-// Run attaches an amd64 raw tracepoint collector and emits normalized IPv4 and
-// IPv6 connect attempts until the context is canceled.
+// Run attaches amd64 raw tracepoint collectors and emits completed normalized
+// IPv4 and IPv6 connect events until the context is canceled.
 func (collector *ConnectCollector) Run(ctx context.Context, sink chan<- events.Event) error {
 	if sink == nil {
 		return errors.New("event sink is required")
@@ -96,6 +100,12 @@ func (collector *ConnectCollector) Run(ctx context.Context, sink chan<- events.E
 	}
 	defer records.Close()
 
+	pending, err := newPendingSyscallMap("rg_conn_pending", binary.Size(connectRecord{}))
+	if err != nil {
+		return fmt.Errorf("create pending connect map: %w", err)
+	}
+	defer pending.Close()
+
 	drops, err := newDropCounterMap("rg_connect_drop")
 	if err != nil {
 		return fmt.Errorf("create connect drop counter: %w", err)
@@ -104,20 +114,43 @@ func (collector *ConnectCollector) Run(ctx context.Context, sink chan<- events.E
 	collector.metrics.attachDropCounter(drops)
 	defer collector.metrics.detachDropCounter(drops)
 
-	program, err := cebpf.NewProgram(connectProgramSpec(records.FD(), drops.FD()))
+	correlationDrops, err := newDropCounterMap("rg_conn_corr_drop")
 	if err != nil {
-		return fmt.Errorf("load connect raw tracepoint program: %w", err)
+		return fmt.Errorf("create connect correlation drop counter: %w", err)
 	}
-	defer program.Close()
+	defer correlationDrops.Close()
+	collector.metrics.attachCorrelationDropCounter(correlationDrops)
+	defer collector.metrics.detachCorrelationDropCounter(correlationDrops)
 
-	hook, err := link.AttachRawTracepoint(link.RawTracepointOptions{
+	enterProgram, err := cebpf.NewProgram(connectEnterProgramSpec(pending.FD(), correlationDrops.FD()))
+	if err != nil {
+		return fmt.Errorf("load connect sys_enter raw tracepoint program: %w", err)
+	}
+	defer enterProgram.Close()
+
+	enterHook, err := link.AttachRawTracepoint(link.RawTracepointOptions{
 		Name:    "sys_enter",
-		Program: program,
+		Program: enterProgram,
 	})
 	if err != nil {
 		return fmt.Errorf("attach sys_enter raw tracepoint: %w", err)
 	}
-	defer hook.Close()
+	defer enterHook.Close()
+
+	exitProgram, err := cebpf.NewProgram(connectExitProgramSpec(records.FD(), drops.FD(), pending.FD()))
+	if err != nil {
+		return fmt.Errorf("load connect sys_exit raw tracepoint program: %w", err)
+	}
+	defer exitProgram.Close()
+
+	exitHook, err := link.AttachRawTracepoint(link.RawTracepointOptions{
+		Name:    "sys_exit",
+		Program: exitProgram,
+	})
+	if err != nil {
+		return fmt.Errorf("attach sys_exit raw tracepoint: %w", err)
+	}
+	defer exitHook.Close()
 
 	reader, err := ringbuf.NewReader(records)
 	if err != nil {
@@ -165,11 +198,17 @@ func (collector *ConnectCollector) Stats() Stats {
 	return collector.metrics.stats()
 }
 
-func connectProgramSpec(ringBufferFD, dropCounterFD int) *cebpf.ProgramSpec {
-	const sockaddrOffset = int16(32)
+func connectEnterProgramSpec(pendingFD, correlationDropCounterFD int) *cebpf.ProgramSpec {
+	const (
+		pidOffset      = int16(24)
+		uidOffset      = int16(28)
+		commOffset     = int16(32)
+		sockaddrOffset = int16(48)
+	)
 	recordSize := int16(binary.Size(connectRecord{}))
 	recordStart := -recordSize
-	tempPointer := recordStart - 8
+	keyOffset := recordStart - 8
+	tempPointer := keyOffset - 8
 
 	instructions := asm.Instructions{
 		asm.Mov.Reg(asm.R6, asm.R1),
@@ -186,14 +225,15 @@ func connectProgramSpec(ringBufferFD, dropCounterFD int) *cebpf.ProgramSpec {
 		asm.StoreMem(asm.RFP, recordStart, asm.R0, asm.DWord),
 
 		asm.FnGetCurrentPidTgid.Call(),
+		asm.StoreMem(asm.RFP, keyOffset, asm.R0, asm.DWord),
 		asm.RSh.Imm(asm.R0, 32),
-		asm.StoreMem(asm.RFP, recordStart+8, asm.R0, asm.Word),
+		asm.StoreMem(asm.RFP, recordStart+pidOffset, asm.R0, asm.Word),
 
 		asm.FnGetCurrentUidGid.Call(),
-		asm.StoreMem(asm.RFP, recordStart+12, asm.R0, asm.Word),
+		asm.StoreMem(asm.RFP, recordStart+uidOffset, asm.R0, asm.Word),
 
 		asm.Mov.Reg(asm.R1, asm.RFP),
-		asm.Add.Imm(asm.R1, int32(recordStart+16)),
+		asm.Add.Imm(asm.R1, int32(recordStart+commOffset)),
 		asm.Mov.Imm(asm.R2, commSize),
 		asm.FnGetCurrentComm.Call(),
 
@@ -233,25 +273,39 @@ func connectProgramSpec(ringBufferFD, dropCounterFD int) *cebpf.ProgramSpec {
 		asm.Ja.Label("emit"),
 	)
 	instructions = append(instructions,
-		asm.LoadMapPtr(asm.R1, ringBufferFD).WithSymbol("emit"),
-		asm.Mov.Reg(asm.R2, asm.RFP),
-		asm.Add.Imm(asm.R2, int32(recordStart)),
-		asm.Mov.Imm(asm.R3, int32(recordSize)),
-		asm.Mov.Imm(asm.R4, 0),
-		asm.FnRingbufOutput.Call(),
+		asm.Mov.Imm(asm.R0, 0).WithSymbol("emit"),
 	)
-	instructions = append(instructions, countRingBufferDrop(dropCounterFD, tempPointer)...)
+	instructions = append(instructions,
+		storePendingSyscall(pendingFD, keyOffset, recordStart)...,
+	)
+	instructions = append(instructions, countCorrelationDrop(correlationDropCounterFD, tempPointer)...)
 	instructions = append(instructions,
 		asm.Mov.Imm(asm.R0, 0).WithSymbol("exit"),
 		asm.Return(),
 	)
 
 	return &cebpf.ProgramSpec{
-		Name:         "rg_connect",
+		Name:         "rg_connect_enter",
 		Type:         cebpf.RawTracepoint,
 		License:      "GPL",
 		Instructions: instructions,
 	}
+}
+
+func connectExitProgramSpec(ringBufferFD, dropCounterFD, pendingFD int) *cebpf.ProgramSpec {
+	const (
+		completionTimestampOffset = int16(8)
+		returnValueOffset         = int16(16)
+	)
+	return completedSyscallProgramSpec(
+		"rg_connect_exit",
+		ringBufferFD,
+		dropCounterFD,
+		pendingFD,
+		int16(binary.Size(connectRecord{})),
+		completionTimestampOffset,
+		returnValueOffset,
+	)
 }
 
 func decodeConnectRecord(raw []byte) (connectRecord, error) {
@@ -295,9 +349,13 @@ func (collector *ConnectCollector) normalize(raw connectRecord) (events.Event, b
 		RemoteAddr:        remoteAddr,
 		RemotePort:        remotePort,
 		Metadata: map[string]any{
-			"source":              "ebpf_raw_tracepoint_sys_enter",
-			"kernel_timestamp_ns": raw.KernelTimestampNS,
-			"address_family":      addressFamily,
+			"source":                         "ebpf_raw_tracepoint_sys_exit",
+			"kernel_timestamp_ns":            raw.KernelTimestampNS,
+			"completion_kernel_timestamp_ns": raw.CompletionKernelTimestampNS,
+			"address_family":                 addressFamily,
+			"return_value":                   raw.ReturnValue,
+			"errno":                          syscallErrno(raw.ReturnValue),
+			"outcome":                        connectOutcome(raw.ReturnValue),
 		},
 	}
 	for key, value := range metadata {
@@ -330,5 +388,16 @@ func decodeSockaddr(raw [sockaddrStorageSize]byte) (string, int, string, map[str
 			true
 	default:
 		return "", 0, "", nil, false
+	}
+}
+
+func connectOutcome(returnValue int64) string {
+	switch syscallErrno(returnValue) {
+	case 0:
+		return "success"
+	case errnoOperationInProgress, errnoOperationAlready:
+		return "in_progress"
+	default:
+		return "failed"
 	}
 }

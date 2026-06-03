@@ -4,6 +4,8 @@
 > planned MVP is complete. Root-only eBPF collector smoke tests passed on a
 > capable host, and an actual local `llama-server` report decoded, persisted,
 > and rendered successfully after JSON Schema output enforcement was added.
+> The latest connect smoke validation covers IPv4/IPv6 syscall-exit outcome
+> handling, including non-blocking `EINPROGRESS` connects.
 
 ## 1. Project Vision
 
@@ -637,11 +639,13 @@ The fake-event pipeline is a prerequisite for full eBPF work. It provides fast f
 
 Current implementation note: the live CLI prints these counters every 10
 seconds and at shutdown. Kernel ring-buffer output failures are counted in BPF
-array maps. Connect capture covers IPv4 and IPv6 syscall-entry attempts.
-File-write and chmod probes correlate syscall entry and exit using bounded BPF
-hash maps; failed correlation inserts are also counted and exposed. Async event
-persistence is bounded, and incident transactions upsert their supporting
-evidence before linking it so queue timing cannot break incident storage.
+array maps. Connect capture covers IPv4 and IPv6. Connect, file-write, and
+chmod probes correlate syscall entry and exit using bounded BPF hash maps;
+failed correlation inserts are also counted and exposed. Connect outcomes may
+be `success`, `in_progress`, or `failed` because non-blocking clients often
+return `EINPROGRESS`. Async event persistence is bounded, and incident
+transactions upsert their supporting evidence before linking it so queue timing
+cannot break incident storage.
 
 ## 19. Definition of Done for MVP
 

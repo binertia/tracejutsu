@@ -108,10 +108,13 @@ func (Basic) Analyze(normalizedEvents []events.Event) Result {
 					fmt.Sprintf("%s made %s executable", event.ProcessName, event.FilePath)))
 			}
 		case events.TypeConnect:
+			if !mutationSucceeded(event) {
+				continue
+			}
 			if artifact, found := downloadedProcessPIDs[event.PID]; found {
 				result.add(signal("downloaded_binary_connected_outbound", 35,
 					appendEvents(artifact.downloadEvents, artifact.executionEvent, event),
-					fmt.Sprintf("%s connected to %s", event.ProcessName, remoteEndpoint(event))))
+					fmt.Sprintf("%s %s %s", event.ProcessName, connectVerb(event), remoteEndpoint(event))))
 			}
 			connectionKey := fmt.Sprintf("%d:%s:%d", event.PID, event.RemoteAddr, event.RemotePort)
 			if isShellConnection(event) && isUnusualOutboundPort(event.RemotePort) && !reverseShellConnections[connectionKey] {
@@ -120,8 +123,8 @@ func (Basic) Analyze(normalizedEvents []events.Event) Result {
 					supportingEvents = []events.Event{shellEvent, event}
 				}
 				result.add(signal("suspicious_reverse_shell_pattern", 50, supportingEvents,
-					fmt.Sprintf("shell %s connected to unusual outbound endpoint %s",
-						event.ProcessName, remoteEndpoint(event))))
+					fmt.Sprintf("shell %s %s unusual outbound endpoint %s",
+						event.ProcessName, connectVerb(event), remoteEndpoint(event))))
 				reverseShellConnections[connectionKey] = true
 			}
 		}
@@ -317,4 +320,11 @@ func fileWriteChanged(event events.Event) bool {
 
 func remoteEndpoint(event events.Event) string {
 	return net.JoinHostPort(event.RemoteAddr, strconv.Itoa(event.RemotePort))
+}
+
+func connectVerb(event events.Event) string {
+	if outcome, _ := event.Metadata["outcome"].(string); outcome == "in_progress" {
+		return "started connecting to"
+	}
+	return "connected to"
 }

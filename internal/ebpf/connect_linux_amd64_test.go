@@ -24,7 +24,12 @@ func TestNormalizeConnectRecord(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	raw := connectRecord{KernelTimestampNS: 123456, PID: 4131, UID: 33}
+	raw := connectRecord{
+		KernelTimestampNS:           123456,
+		CompletionKernelTimestampNS: 123789,
+		PID:                         4131,
+		UID:                         33,
+	}
 	copy(raw.Comm[:], "payload")
 	binary.LittleEndian.PutUint16(raw.Sockaddr[0:2], addressFamilyIPv4)
 	binary.BigEndian.PutUint16(raw.Sockaddr[2:4], 4444)
@@ -48,10 +53,18 @@ func TestNormalizeConnectRecord(t *testing.T) {
 	if got := event.Metadata["address_family"]; got != "AF_INET" {
 		t.Fatalf("address family = %#v, want AF_INET", got)
 	}
+	if got := event.Metadata["outcome"]; got != "success" {
+		t.Fatalf("outcome = %#v, want success", got)
+	}
 }
 
 func TestNormalizeConnectRecordIPv6(t *testing.T) {
-	raw := connectRecord{KernelTimestampNS: 123456, PID: 4131, UID: 33}
+	raw := connectRecord{
+		KernelTimestampNS:           123456,
+		CompletionKernelTimestampNS: 123789,
+		PID:                         4131,
+		UID:                         33,
+	}
 	copy(raw.Comm[:], "payload")
 	binary.LittleEndian.PutUint16(raw.Sockaddr[0:2], addressFamilyIPv6)
 	binary.BigEndian.PutUint16(raw.Sockaddr[2:4], 4444)
@@ -72,6 +85,46 @@ func TestNormalizeConnectRecordIPv6(t *testing.T) {
 	}
 	if got := event.Metadata["scope_id"]; got != uint32(7) {
 		t.Fatalf("scope ID = %#v, want uint32(7)", got)
+	}
+}
+
+func TestNormalizeConnectRecordIncludesFailure(t *testing.T) {
+	raw := connectRecord{PID: 4131, UID: 33, ReturnValue: -111}
+	copy(raw.Comm[:], "payload")
+	binary.LittleEndian.PutUint16(raw.Sockaddr[0:2], addressFamilyIPv4)
+	binary.BigEndian.PutUint16(raw.Sockaddr[2:4], 4444)
+	copy(raw.Sockaddr[4:8], []byte{203, 0, 113, 10})
+
+	collector := &ConnectCollector{host: "devbox-01", procRoot: t.TempDir()}
+	event, ok := collector.normalize(raw)
+	if !ok {
+		t.Fatal("expected failed connect event to be normalized")
+	}
+	if got := event.Metadata["outcome"]; got != "failed" {
+		t.Fatalf("outcome = %#v, want failed", got)
+	}
+	if got := event.Metadata["errno"]; got != int64(111) {
+		t.Fatalf("errno = %#v, want int64(111)", got)
+	}
+}
+
+func TestNormalizeConnectRecordIncludesInProgress(t *testing.T) {
+	raw := connectRecord{PID: 4131, UID: 33, ReturnValue: -errnoOperationInProgress}
+	copy(raw.Comm[:], "payload")
+	binary.LittleEndian.PutUint16(raw.Sockaddr[0:2], addressFamilyIPv4)
+	binary.BigEndian.PutUint16(raw.Sockaddr[2:4], 4444)
+	copy(raw.Sockaddr[4:8], []byte{203, 0, 113, 10})
+
+	collector := &ConnectCollector{host: "devbox-01", procRoot: t.TempDir()}
+	event, ok := collector.normalize(raw)
+	if !ok {
+		t.Fatal("expected in-progress connect event to be normalized")
+	}
+	if got := event.Metadata["outcome"]; got != "in_progress" {
+		t.Fatalf("outcome = %#v, want in_progress", got)
+	}
+	if got := event.Metadata["errno"]; got != int64(errnoOperationInProgress) {
+		t.Fatalf("errno = %#v, want EINPROGRESS", got)
 	}
 }
 

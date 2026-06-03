@@ -163,3 +163,55 @@ func TestCompressFormatsIPv6Endpoint(t *testing.T) {
 		t.Fatalf("timeline = %v, want entry %q", incident.Timeline, want)
 	}
 }
+
+func TestCompressNarratesFailedConnect(t *testing.T) {
+	normalizedEvents := []events.Event{
+		{
+			EventID:        "evt-failed-connect",
+			Timestamp:      time.Date(2026, time.June, 2, 12, 0, 0, 0, time.UTC),
+			Host:           "devbox-01",
+			PID:            6001,
+			ProcessName:    "payload",
+			EventType:      events.TypeConnect,
+			ExecutablePath: "/tmp/payload",
+			RemoteAddr:     "2001:db8::5",
+			RemotePort:     4444,
+			Metadata:       map[string]any{"outcome": "failed"},
+		},
+	}
+
+	incident, err := compress.NewBasic().Compress(normalizedEvents, detect.Result{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const want = "/tmp/payload failed to connect to [2001:db8::5]:4444"
+	if !slices.Contains(incident.Timeline, want) {
+		t.Fatalf("timeline = %v, want entry %q", incident.Timeline, want)
+	}
+}
+
+func TestCompressNarratesInProgressConnect(t *testing.T) {
+	normalizedEvents := []events.Event{
+		{
+			EventID:        "evt-in-progress-connect",
+			Timestamp:      time.Date(2026, time.June, 2, 12, 0, 0, 0, time.UTC),
+			Host:           "devbox-01",
+			PID:            6001,
+			ProcessName:    "payload",
+			EventType:      events.TypeConnect,
+			ExecutablePath: "/tmp/payload",
+			RemoteAddr:     "2001:db8::5",
+			RemotePort:     4444,
+			Metadata:       map[string]any{"outcome": "in_progress"},
+		},
+	}
+
+	incident, err := compress.NewBasic().Compress(normalizedEvents, detect.Result{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const want = "/tmp/payload started connecting to [2001:db8::5]:4444"
+	if !slices.Contains(incident.Timeline, want) {
+		t.Fatalf("timeline = %v, want entry %q", incident.Timeline, want)
+	}
+}

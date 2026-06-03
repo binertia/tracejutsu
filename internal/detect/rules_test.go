@@ -186,6 +186,51 @@ func TestBasicAnalyzeFormatsIPv6EndpointEvidence(t *testing.T) {
 	}
 }
 
+func TestBasicAnalyzeIgnoresFailedConnects(t *testing.T) {
+	normalizedEvents := []events.Event{
+		{
+			EventID:        "evt-failed-shell-connect",
+			Timestamp:      time.Date(2026, time.June, 2, 12, 0, 0, 0, time.UTC),
+			Host:           "devbox-01",
+			PID:            6001,
+			ProcessName:    "bash",
+			EventType:      events.TypeConnect,
+			ExecutablePath: "/usr/bin/bash",
+			RemoteAddr:     "2001:db8::5",
+			RemotePort:     4444,
+			Metadata:       map[string]any{"outcome": "failed"},
+		},
+	}
+
+	result := detect.NewBasic().Analyze(normalizedEvents)
+	if len(result.Signals) != 0 {
+		t.Fatalf("signals = %+v, want none for failed connect", result.Signals)
+	}
+}
+
+func TestBasicAnalyzeUsesInProgressConnectEvidence(t *testing.T) {
+	normalizedEvents := []events.Event{
+		{
+			EventID:        "evt-in-progress-shell-connect",
+			Timestamp:      time.Date(2026, time.June, 2, 12, 0, 0, 0, time.UTC),
+			Host:           "devbox-01",
+			PID:            6001,
+			ProcessName:    "bash",
+			EventType:      events.TypeConnect,
+			ExecutablePath: "/usr/bin/bash",
+			RemoteAddr:     "2001:db8::5",
+			RemotePort:     4444,
+			Metadata:       map[string]any{"outcome": "in_progress"},
+		},
+	}
+
+	result := detect.NewBasic().Analyze(normalizedEvents)
+	signal := signalByRuleID(t, result, "suspicious_reverse_shell_pattern")
+	if want := "started connecting to unusual outbound endpoint [2001:db8::5]:4444"; !strings.Contains(signal.Evidence, want) {
+		t.Fatalf("evidence = %q, want substring %q", signal.Evidence, want)
+	}
+}
+
 func TestRiskLevel(t *testing.T) {
 	tests := []struct {
 		score int

@@ -20,10 +20,11 @@ sudo go test -tags=ebpf_smoke ./internal/ebpf -run 'Test(Execve|Connect|FileWrit
 ```
 
 The live collectors are assembled in Go, so they do not require `clang`.
-`connect` records capture syscall-entry attempts. File write and `chmod` probes
-correlate syscall entry and exit with bounded in-kernel maps, then report
-`success` or `failed` outcomes. A requested chmod execute bit does not prove
-that the bit was newly added.
+`connect`, file write, and `chmod` probes correlate syscall entry and exit with
+bounded in-kernel maps. File write and chmod report `success` or `failed`.
+Connect reports `success`, `in_progress`, or `failed` because non-blocking
+clients often return `EINPROGRESS`. A requested chmod execute bit does not
+prove that the bit was newly added.
 
 Persist the fake pipeline to a local SQLite database and inspect the result:
 
