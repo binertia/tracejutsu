@@ -12,7 +12,10 @@ import (
 	"runtime-guard/internal/events"
 )
 
-const DefaultRingBufferSize = 8 * 1024 * 1024
+const (
+	DefaultRingBufferSize = 8 * 1024 * 1024
+	maxBPFImmediate       = int64(1<<31 - 1)
+)
 
 const (
 	CollectorExecve    = "execve"
@@ -30,8 +33,9 @@ type NamedCollector interface {
 }
 
 type RuntimeConfig struct {
-	RingBufferSize int
-	Collectors     []string
+	RingBufferSize    int
+	Collectors        []string
+	FileWriteMinBytes int64
 }
 
 type Stats struct {
@@ -156,6 +160,12 @@ func checkedRuntimeConfig(config RuntimeConfig) (RuntimeConfig, error) {
 	}
 	if config.RingBufferSize&(config.RingBufferSize-1) != 0 {
 		return RuntimeConfig{}, errors.New("collector ring buffer size must be a power of two")
+	}
+	if config.FileWriteMinBytes < 0 {
+		return RuntimeConfig{}, errors.New("file write minimum bytes must be non-negative")
+	}
+	if config.FileWriteMinBytes > maxBPFImmediate {
+		return RuntimeConfig{}, fmt.Errorf("file write minimum bytes must be <= %d", maxBPFImmediate)
 	}
 	return config, nil
 }

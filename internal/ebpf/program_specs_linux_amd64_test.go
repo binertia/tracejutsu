@@ -16,7 +16,8 @@ func TestProgramSpecsMarshal(t *testing.T) {
 		"connect_enter":    connectEnterProgramSpec(3, 4),
 		"connect_exit":     connectExitProgramSpec(1, 2, 3),
 		"file_write_enter": fileWriteEnterProgramSpec(3, 4),
-		"file_write_exit":  fileWriteExitProgramSpec(1, 2, 3),
+		"file_write_exit":  fileWriteExitProgramSpec(1, 2, 3, 0),
+		"file_write_floor": fileWriteExitProgramSpec(1, 2, 3, 4096),
 		"chmod_enter":      chmodEnterProgramSpec(3, 4),
 		"chmod_exit":       chmodExitProgramSpec(1, 2, 3),
 	}

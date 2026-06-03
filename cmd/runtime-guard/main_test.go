@@ -180,6 +180,11 @@ func TestRunLiveRejectsInvalidBufferOptions(t *testing.T) {
 			args: []string{"run", "--collectors", "unknown"},
 			want: "unknown collector",
 		},
+		{
+			name: "file write minimum bytes",
+			args: []string{"run", "--file-write-min-bytes", "-1"},
+			want: "file write minimum bytes must be non-negative",
+		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			err := run(test.args, &bytes.Buffer{})

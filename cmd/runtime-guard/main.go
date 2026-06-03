@@ -156,9 +156,10 @@ func runLive(args []string, out io.Writer) (err error) {
 	persistBatchSize := flags.Int("persist-batch-size", persistqueue.DefaultBatchSize, "maximum normalized events per async persistence transaction")
 	ringBufferSize := flags.Int("ring-buffer-size", sensor.DefaultRingBufferSize, "per-collector eBPF ring buffer size in bytes; must be a power of two")
 	collectorNames := flags.String("collectors", strings.Join(sensor.DefaultCollectorNames(), ","), "comma-separated collectors to enable: all, execve, connect, file_write, chmod")
+	fileWriteMinBytes := flags.Int64("file-write-min-bytes", 0, "minimum successful bytes for file_write events; 0 captures all completed writes")
 	quietEvents := flags.Bool("quiet-events", false, "suppress per-event JSON output")
 	if err := flags.Parse(args); err != nil || len(flags.Args()) != 0 {
-		return errors.New("usage: runtime-guard run [--db path] [--flush-after duration] [--stats-interval duration] [--event-buffer count] [--persist-buffer count] [--persist-batch-size count] [--ring-buffer-size bytes] [--collectors list] [--quiet-events]")
+		return errors.New("usage: runtime-guard run [--db path] [--flush-after duration] [--stats-interval duration] [--event-buffer count] [--persist-buffer count] [--persist-batch-size count] [--ring-buffer-size bytes] [--collectors list] [--file-write-min-bytes bytes] [--quiet-events]")
 	}
 	if *eventBuffer <= 0 {
 		return errors.New("event buffer size must be positive")
@@ -185,8 +186,9 @@ func runLive(args []string, out io.Writer) (err error) {
 	}
 
 	collector, err := sensor.NewRuntimeCollectorWithConfig(sensor.RuntimeConfig{
-		RingBufferSize: *ringBufferSize,
-		Collectors:     enabledCollectors,
+		RingBufferSize:    *ringBufferSize,
+		Collectors:        enabledCollectors,
+		FileWriteMinBytes: *fileWriteMinBytes,
 	})
 	if err != nil {
 		return fmt.Errorf("create runtime collector: %w", err)
@@ -237,8 +239,8 @@ func runLive(args []string, out io.Writer) (err error) {
 	flushTicker := time.NewTicker(time.Second)
 	defer flushTicker.Stop()
 
-	fmt.Fprintf(out, "runtime-guard: collecting %s events; quiet_events=%t stats_interval=%s event_buffer=%d persist_buffer=%d persist_batch_size=%d ring_buffer_size=%d; press Ctrl-C to stop\n",
-		strings.Join(enabledCollectors, ","), *quietEvents, statsIntervalLabel(*statsInterval), *eventBuffer, *persistBuffer, *persistBatchSize, *ringBufferSize)
+	fmt.Fprintf(out, "runtime-guard: collecting %s events; quiet_events=%t stats_interval=%s event_buffer=%d persist_buffer=%d persist_batch_size=%d ring_buffer_size=%d file_write_min_bytes=%d; press Ctrl-C to stop\n",
+		strings.Join(enabledCollectors, ","), *quietEvents, statsIntervalLabel(*statsInterval), *eventBuffer, *persistBuffer, *persistBatchSize, *ringBufferSize, *fileWriteMinBytes)
 	encoder := json.NewEncoder(out)
 	for {
 		select {
@@ -532,7 +534,7 @@ func writeUsage(out io.Writer) {
 
 Usage:
   runtime-guard demo [--db path] [fixture.json]       Run the fake-event incident pipeline
-  runtime-guard run [--db path] [--flush-after time] [--stats-interval time] [--event-buffer count] [--persist-buffer count] [--persist-batch-size count] [--ring-buffer-size bytes] [--collectors list] [--quiet-events]
+  runtime-guard run [--db path] [--flush-after time] [--stats-interval time] [--event-buffer count] [--persist-buffer count] [--persist-batch-size count] [--ring-buffer-size bytes] [--collectors list] [--file-write-min-bytes bytes] [--quiet-events]
                                                        Stream live runtime events and detect incidents (Linux amd64, root)
   runtime-guard events [--db path] [--limit count]    List stored normalized events
   runtime-guard incidents [--db path] [--limit count] List stored incidents

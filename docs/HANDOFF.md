@@ -113,9 +113,11 @@ Implemented deterministic rules:
   `--persist-batch-size`, and `--ring-buffer-size` tune burst capacity.
   `--collectors` narrows live collection to a comma-separated subset of
   `execve`, `connect`, `file_write`, and `chmod` for stress isolation or
-  targeted deployments. The packaged service uses 16384 event and persistence
-  queue slots, 512 events per persistence transaction, 8 MiB per collector ring
-  buffer, and all collectors by default.
+  targeted deployments. `--file-write-min-bytes` can apply a kernel-side byte
+  floor to file-write events before they enter the ring buffer. The packaged
+  service uses 16384 event and persistence queue slots, 512 events per
+  persistence transaction, 8 MiB per collector ring buffer, all collectors, and
+  no file-write byte floor by default.
 - `runtime-guard run --quiet-events` suppresses per-event JSON for service-style
   operation while still printing incidents and periodic stats.
 - `runtime-guard run --stats-interval` controls periodic runtime stats; `0`
@@ -139,7 +141,10 @@ Implemented deterministic rules:
   processed about 3.6M normalized events with no persistence or correlation
   drops, but still had about 31.5M aggregate ring-buffer drops and a 3.5G memory
   peak. Per-collector drop breakdowns and `--collectors` were added after that
-  run to identify and isolate the noisy collector in the next stress pass.
+  run to identify and isolate the noisy collector in the next stress pass. A
+  follow-up 10-minute all-collector stress run isolated the remaining ring
+  drops to `file_write` only, so `--file-write-min-bytes` was added for
+  host-specific file-write volume control.
 - `runtime-guard show` appends an existing stored LLM analysis after the
   deterministic incident evidence when one is available.
 

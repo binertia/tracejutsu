@@ -39,6 +39,19 @@ func storePendingSyscall(mapFD int, keyOffset, recordStart int16) asm.Instructio
 }
 
 func completedSyscallProgramSpec(name string, ringBufferFD, dropCounterFD, pendingFD int, recordSize, completionTimestampOffset, returnValueOffset int16) *cebpf.ProgramSpec {
+	return completedSyscallProgramSpecWithExitFilter(
+		name,
+		ringBufferFD,
+		dropCounterFD,
+		pendingFD,
+		recordSize,
+		completionTimestampOffset,
+		returnValueOffset,
+		nil,
+	)
+}
+
+func completedSyscallProgramSpecWithExitFilter(name string, ringBufferFD, dropCounterFD, pendingFD int, recordSize, completionTimestampOffset, returnValueOffset int16, beforeOutput asm.Instructions) *cebpf.ProgramSpec {
 	recordStart := -recordSize
 	keyOffset := recordStart - 8
 	tempValue := keyOffset - 8
@@ -71,7 +84,9 @@ func completedSyscallProgramSpec(name string, ringBufferFD, dropCounterFD, pendi
 		asm.Mov.Reg(asm.R2, asm.RFP),
 		asm.Add.Imm(asm.R2, int32(keyOffset)),
 		asm.FnMapDeleteElem.Call(),
-
+	)
+	instructions = append(instructions, beforeOutput...)
+	instructions = append(instructions,
 		asm.LoadMapPtr(asm.R1, ringBufferFD),
 		asm.Mov.Reg(asm.R2, asm.RFP),
 		asm.Add.Imm(asm.R2, int32(recordStart)),

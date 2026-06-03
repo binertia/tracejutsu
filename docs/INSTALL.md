@@ -39,6 +39,9 @@ the service UID and must not permit group or other writes.
 The service enables all collectors by default. Add `--collectors` to the unit's
 `ExecStart` only when you intentionally want a narrower deployment such as
 `--collectors execve,connect`.
+If file-write volume is too high on a host, test `--file-write-min-bytes`
+before adding it to the service. A nonzero value filters smaller file writes in
+the eBPF exit probe before they enter the ring buffer.
 
 ```sh
 sudo install -o root -g root -m 0644 \
@@ -146,6 +149,16 @@ collector set:
 scripts/systemd-stress.sh --duration 10m --stats-interval 1m --collectors connect
 scripts/systemd-stress.sh --duration 10m --stats-interval 1m --collectors file_write
 ```
+
+If `file_write` is the noisy collector, test a kernel-side byte floor:
+
+```sh
+scripts/systemd-stress.sh --duration 10m --stats-interval 1m --collectors file_write --file-write-min-bytes 4096
+```
+
+This keeps only completed file writes whose return value is at least the
+configured byte count. It reduces ordinary small writes but can miss small
+sensitive-file edits, so treat it as a host-specific tuning decision.
 
 ## Uninstall
 

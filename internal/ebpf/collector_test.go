@@ -101,6 +101,14 @@ func TestCheckedRuntimeConfigRejectsInvalidRingBufferSize(t *testing.T) {
 	}
 }
 
+func TestCheckedRuntimeConfigRejectsInvalidFileWriteMinimum(t *testing.T) {
+	for _, minimum := range []int64{-1, maxBPFImmediate + 1} {
+		if _, err := checkedRuntimeConfig(RuntimeConfig{FileWriteMinBytes: minimum}); err == nil {
+			t.Fatalf("file write minimum %d should fail", minimum)
+		}
+	}
+}
+
 func TestParseCollectorNames(t *testing.T) {
 	for _, test := range []struct {
 		name  string

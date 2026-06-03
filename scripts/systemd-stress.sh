@@ -3,7 +3,7 @@ set -euo pipefail
 
 usage() {
 	cat <<'EOF'
-Usage: scripts/systemd-stress.sh [--duration 30m] [--stats-interval 1m] [--collectors all] [--yes]
+Usage: scripts/systemd-stress.sh [--duration 30m] [--stats-interval 1m] [--collectors all] [--file-write-min-bytes 0] [--yes]
 
 Builds a temporary runtime-guard binary and runs it under a transient systemd
 unit using the packaged service sandbox and tuned buffer settings. This is a
@@ -15,6 +15,8 @@ Options:
   --stats-interval DURATION  Runtime stats print interval. Default: 1m.
   --collectors LIST          Comma-separated collectors: all, execve, connect, file_write, chmod.
                              Default: all.
+  --file-write-min-bytes N   Minimum successful bytes for file_write events.
+                             Default: 0, which captures all completed writes.
   --yes                      Skip the interactive confirmation prompt.
   --help                     Show this help.
 EOF
@@ -23,6 +25,7 @@ EOF
 duration=30m
 stats_interval=1m
 collectors=all
+file_write_min_bytes=0
 assume_yes=0
 
 while [[ $# -gt 0 ]]; do
@@ -49,6 +52,14 @@ while [[ $# -gt 0 ]]; do
 			exit 2
 		fi
 		collectors="$2"
+		shift 2
+		;;
+	--file-write-min-bytes)
+		if [[ $# -lt 2 ]]; then
+			echo "--file-write-min-bytes requires a value" >&2
+			exit 2
+		fi
+		file_write_min_bytes="$2"
 		shift 2
 		;;
 	--yes)
@@ -117,6 +128,7 @@ Will:
   - run duration: $duration
   - stats interval: $stats_interval
   - collectors: $collectors
+  - file write minimum bytes: $file_write_min_bytes
   - write only inside service state: $state_dir
   - leave the real runtime-guard.service untouched
 
@@ -125,6 +137,7 @@ Tuned runtime settings:
   - persist_buffer=16384
   - persist_batch_size=512
   - ring_buffer_size=8388608
+  - file_write_min_bytes=$file_write_min_bytes
 
 Will not:
   - install or replace packaging/systemd/runtime-guard.service
@@ -162,6 +175,7 @@ state_name=$2
 duration=$3
 stats_interval=$4
 collectors=$5
+file_write_min_bytes=$6
 state_dir="/var/lib/$state_name"
 db="$state_dir/runtime-guard.db"
 
@@ -174,6 +188,7 @@ db="$state_dir/runtime-guard.db"
 	--persist-batch-size 512 \
 	--ring-buffer-size 8388608 \
 	--collectors "$collectors" \
+	--file-write-min-bytes "$file_write_min_bytes" \
 	--quiet-events &
 guard=$!
 
@@ -233,7 +248,7 @@ systemd_args=(
 	-p RestrictNamespaces=yes
 	-p RestrictRealtime=yes
 	-p RestrictSUIDSGID=yes
-	"$runner_script" "$binary" "$state_name" "$duration" "$stats_interval" "$collectors"
+	"$runner_script" "$binary" "$state_name" "$duration" "$stats_interval" "$collectors" "$file_write_min_bytes"
 )
 
 set +e

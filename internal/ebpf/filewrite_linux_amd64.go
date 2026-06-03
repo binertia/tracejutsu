@@ -31,12 +31,13 @@ const (
 )
 
 type FileWriteCollector struct {
-	host           string
-	procRoot       string
-	containerCache *containerMetadataCache
-	ringBufferSize int
-	metrics        collectorMetrics
-	sequence       atomic.Uint64
+	host              string
+	procRoot          string
+	containerCache    *containerMetadataCache
+	ringBufferSize    int
+	fileWriteMinBytes int64
+	metrics           collectorMetrics
+	sequence          atomic.Uint64
 }
 
 type fileWriteRecord struct {
@@ -65,10 +66,11 @@ func NewFileWriteCollectorWithConfig(config RuntimeConfig) (*FileWriteCollector,
 		return nil, fmt.Errorf("read hostname: %w", err)
 	}
 	return &FileWriteCollector{
-		host:           host,
-		procRoot:       "/proc",
-		containerCache: newContainerMetadataCache(),
-		ringBufferSize: config.RingBufferSize,
+		host:              host,
+		procRoot:          "/proc",
+		containerCache:    newContainerMetadataCache(),
+		ringBufferSize:    config.RingBufferSize,
+		fileWriteMinBytes: config.FileWriteMinBytes,
 	}, nil
 }
 
@@ -127,7 +129,7 @@ func (collector *FileWriteCollector) Run(ctx context.Context, sink chan<- events
 	}
 	defer enterHook.Close()
 
-	exitProgram, err := cebpf.NewProgram(fileWriteExitProgramSpec(records.FD(), drops.FD(), pending.FD()))
+	exitProgram, err := cebpf.NewProgram(fileWriteExitProgramSpec(records.FD(), drops.FD(), pending.FD(), collector.fileWriteMinBytes))
 	if err != nil {
 		return fmt.Errorf("load file write sys_exit raw tracepoint program: %w", err)
 	}
@@ -260,12 +262,16 @@ func fileWriteEnterProgramSpec(pendingFD, correlationDropCounterFD int) *cebpf.P
 	}
 }
 
-func fileWriteExitProgramSpec(ringBufferFD, dropCounterFD, pendingFD int) *cebpf.ProgramSpec {
+func fileWriteExitProgramSpec(ringBufferFD, dropCounterFD, pendingFD int, minBytes int64) *cebpf.ProgramSpec {
 	const (
 		completionTimestampOffset = int16(8)
 		returnValueOffset         = int16(16)
 	)
-	return completedSyscallProgramSpec(
+	var beforeOutput asm.Instructions
+	if minBytes > 0 {
+		beforeOutput = append(beforeOutput, asm.JSLT.Imm(asm.R8, int32(minBytes), "exit"))
+	}
+	return completedSyscallProgramSpecWithExitFilter(
 		"rg_write_exit",
 		ringBufferFD,
 		dropCounterFD,
@@ -273,6 +279,7 @@ func fileWriteExitProgramSpec(ringBufferFD, dropCounterFD, pendingFD int) *cebpf
 		int16(binary.Size(fileWriteRecord{})),
 		completionTimestampOffset,
 		returnValueOffset,
+		beforeOutput,
 	)
 }
 
