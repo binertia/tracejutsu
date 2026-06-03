@@ -213,6 +213,10 @@ func (collector *ConnectCollector) Stats() Stats {
 	return collector.metrics.stats()
 }
 
+func (*ConnectCollector) Name() string {
+	return "connect"
+}
+
 func connectEnterProgramSpec(pendingFD, correlationDropCounterFD int) *cebpf.ProgramSpec {
 	const (
 		pidOffset      = int16(24)

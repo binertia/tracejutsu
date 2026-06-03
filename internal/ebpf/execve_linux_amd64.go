@@ -148,6 +148,10 @@ func (collector *ExecveCollector) Stats() Stats {
 	return collector.metrics.stats()
 }
 
+func (*ExecveCollector) Name() string {
+	return "execve"
+}
+
 func execveProgramSpec(ringBufferFD, dropCounterFD int) *cebpf.ProgramSpec {
 	const (
 		commOffset = int16(16)

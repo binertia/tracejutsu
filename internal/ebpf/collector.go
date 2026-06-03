@@ -17,6 +17,10 @@ type Collector interface {
 	Run(ctx context.Context, sink chan<- events.Event) error
 }
 
+type NamedCollector interface {
+	Name() string
+}
+
 type RuntimeConfig struct {
 	RingBufferSize int
 }
@@ -30,6 +34,15 @@ type StatsProvider interface {
 	Stats() Stats
 }
 
+type CollectorStats struct {
+	Name  string
+	Stats Stats
+}
+
+type StatsDetailProvider interface {
+	StatsByCollector() []CollectorStats
+}
+
 type CompositeCollector struct {
 	collectors []Collector
 }
@@ -40,14 +53,27 @@ func NewCompositeCollector(collectors ...Collector) *CompositeCollector {
 
 func (collector *CompositeCollector) Stats() Stats {
 	var combined Stats
-	for _, child := range collector.collectors {
-		if provider, ok := child.(StatsProvider); ok {
-			stats := provider.Stats()
-			combined.RingBufferDropped += stats.RingBufferDropped
-			combined.CorrelationDropped += stats.CorrelationDropped
-		}
+	for _, detail := range collector.StatsByCollector() {
+		combined.RingBufferDropped += detail.Stats.RingBufferDropped
+		combined.CorrelationDropped += detail.Stats.CorrelationDropped
 	}
 	return combined
+}
+
+func (collector *CompositeCollector) StatsByCollector() []CollectorStats {
+	details := make([]CollectorStats, 0, len(collector.collectors))
+	for index, child := range collector.collectors {
+		provider, ok := child.(StatsProvider)
+		if !ok {
+			continue
+		}
+		name := fmt.Sprintf("collector_%d", index)
+		if named, ok := child.(NamedCollector); ok {
+			name = named.Name()
+		}
+		details = append(details, CollectorStats{Name: name, Stats: provider.Stats()})
+	}
+	return details
 }
 
 func (collector *CompositeCollector) Run(ctx context.Context, sink chan<- events.Event) error {

@@ -106,7 +106,8 @@ Implemented deterministic rules:
   buffered-but-unpersisted events are counted as dropped.
 - The live CLI reports normalized, grouped, analyzed, incident, kernel
   ring-buffer-drop, syscall-correlation-drop, and event-persistence counters
-  every 10 seconds by default and at shutdown.
+  every 10 seconds by default and at shutdown. It also reports per-collector
+  ring-buffer and syscall-correlation drop breakdowns for tuning.
 - `runtime-guard run --event-buffer`, `--persist-buffer`,
   `--persist-batch-size`, and `--ring-buffer-size` tune burst capacity. The
   packaged service uses 16384 event and persistence queue slots, 512 events per
@@ -130,7 +131,11 @@ Implemented deterministic rules:
 - The earlier transient systemd smoke run reported high ring-buffer drops under
   local system-wide event load before service buffers and async SQLite batching
   were tuned. A repeat short smoke run had zero drops, but longer stress testing
-  across busier hosts still remains open.
+  across busier hosts still remains open. A 30-minute stress run on Debian
+  processed about 3.6M normalized events with no persistence or correlation
+  drops, but still had about 31.5M aggregate ring-buffer drops and a 3.5G memory
+  peak. Per-collector drop breakdowns were added after that run to identify the
+  noisy collector in the next stress pass.
 - `runtime-guard show` appends an existing stored LLM analysis after the
   deterministic incident evidence when one is available.
 

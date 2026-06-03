@@ -58,8 +58,8 @@ func TestCompositeCollectorCancelsSiblingOnError(t *testing.T) {
 
 func TestCompositeCollectorCombinesChildStats(t *testing.T) {
 	composite := NewCompositeCollector(
-		statsCollector{stats: Stats{RingBufferDropped: 3, CorrelationDropped: 2}},
-		statsCollector{stats: Stats{RingBufferDropped: 5, CorrelationDropped: 4}},
+		statsCollector{name: "execve", stats: Stats{RingBufferDropped: 3, CorrelationDropped: 2}},
+		statsCollector{name: "file_write", stats: Stats{RingBufferDropped: 5, CorrelationDropped: 4}},
 	)
 
 	stats := composite.Stats()
@@ -68,6 +68,17 @@ func TestCompositeCollectorCombinesChildStats(t *testing.T) {
 	}
 	if got := stats.CorrelationDropped; got != 6 {
 		t.Fatalf("correlation dropped = %d, want 6", got)
+	}
+
+	details := composite.StatsByCollector()
+	if len(details) != 2 {
+		t.Fatalf("details count = %d, want 2", len(details))
+	}
+	if details[0].Name != "execve" || details[0].Stats.RingBufferDropped != 3 {
+		t.Fatalf("first detail = %#v, want execve with ring drops", details[0])
+	}
+	if details[1].Name != "file_write" || details[1].Stats.CorrelationDropped != 4 {
+		t.Fatalf("second detail = %#v, want file_write with correlation drops", details[1])
 	}
 }
 
@@ -96,6 +107,7 @@ func (function collectorFunc) Run(ctx context.Context, sink chan<- events.Event)
 }
 
 type statsCollector struct {
+	name  string
 	stats Stats
 }
 
@@ -105,4 +117,8 @@ func (statsCollector) Run(context.Context, chan<- events.Event) error {
 
 func (collector statsCollector) Stats() Stats {
 	return collector.stats
+}
+
+func (collector statsCollector) Name() string {
+	return collector.name
 }

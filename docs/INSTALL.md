@@ -132,7 +132,9 @@ scripts/systemd-stress.sh --duration 30m --stats-interval 1m
 The stress helper uses the same sandbox and tuned buffer settings as the
 packaged service. It does not install the service or generate artificial load.
 Track the final `runtime stats` line, CPU time, memory peak, and whether
-`ring_dropped`, `correlation_dropped`, or `persist_dropped` remain zero.
+`ring_dropped`, `correlation_dropped`, or `persist_dropped` remain zero. If
+ring drops are nonzero, also capture `collector_ring_dropped` so the noisy
+collector can be tuned directly.
 
 ## Uninstall
 

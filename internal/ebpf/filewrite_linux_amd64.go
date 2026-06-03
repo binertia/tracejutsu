@@ -181,6 +181,10 @@ func (collector *FileWriteCollector) Stats() Stats {
 	return collector.metrics.stats()
 }
 
+func (*FileWriteCollector) Name() string {
+	return "file_write"
+}
+
 func fileWriteEnterProgramSpec(pendingFD, correlationDropCounterFD int) *cebpf.ProgramSpec {
 	const (
 		pidOffset     = int16(24)

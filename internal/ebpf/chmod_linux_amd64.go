@@ -184,6 +184,10 @@ func (collector *ChmodCollector) Stats() Stats {
 	return collector.metrics.stats()
 }
 
+func (*ChmodCollector) Name() string {
+	return "chmod"
+}
+
 func chmodEnterProgramSpec(pendingFD, correlationDropCounterFD int) *cebpf.ProgramSpec {
 	const (
 		pidOffset     = int16(24)

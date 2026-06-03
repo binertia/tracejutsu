@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -317,10 +318,32 @@ func writeLiveStats(out io.Writer, collector sensor.Collector, processor *pipeli
 	if eventQueue != nil {
 		queueStats = eventQueue.Stats()
 	}
-	fmt.Fprintf(out, "runtime stats: normalized=%d grouped=%d analyzed=%d incidents=%d ring_dropped=%d correlation_dropped=%d persist_received=%d persist_enqueued=%d persisted=%d persist_dropped=%d\n",
+	fmt.Fprintf(out, "runtime stats: normalized=%d grouped=%d analyzed=%d incidents=%d ring_dropped=%d correlation_dropped=%d persist_received=%d persist_enqueued=%d persisted=%d persist_dropped=%d",
 		normalizedEvents, pipelineStats.GroupedCandidates, pipelineStats.AnalyzedCandidates,
 		pipelineStats.Incidents, collectorStats.RingBufferDropped, collectorStats.CorrelationDropped, queueStats.Received,
 		queueStats.Enqueued, queueStats.Persisted, queueStats.Dropped)
+	if detailProvider, ok := collector.(sensor.StatsDetailProvider); ok {
+		details := detailProvider.StatsByCollector()
+		fmt.Fprintf(out, " collector_ring_dropped=%s collector_correlation_dropped=%s",
+			collectorStatsLabel(details, func(stats sensor.Stats) uint64 {
+				return stats.RingBufferDropped
+			}),
+			collectorStatsLabel(details, func(stats sensor.Stats) uint64 {
+				return stats.CorrelationDropped
+			}))
+	}
+	fmt.Fprintln(out)
+}
+
+func collectorStatsLabel(details []sensor.CollectorStats, value func(sensor.Stats) uint64) string {
+	if len(details) == 0 {
+		return "none"
+	}
+	parts := make([]string, 0, len(details))
+	for _, detail := range details {
+		parts = append(parts, fmt.Sprintf("%s:%d", detail.Name, value(detail.Stats)))
+	}
+	return strings.Join(parts, ",")
 }
 
 func newProcessor(inactivityTimeout time.Duration) *pipeline.Processor {

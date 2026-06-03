@@ -44,6 +44,13 @@ func (statsRuntimeCollector) Stats() sensor.Stats {
 	return sensor.Stats{RingBufferDropped: 7, CorrelationDropped: 3}
 }
 
+func (statsRuntimeCollector) StatsByCollector() []sensor.CollectorStats {
+	return []sensor.CollectorStats{
+		{Name: "execve", Stats: sensor.Stats{RingBufferDropped: 2}},
+		{Name: "file_write", Stats: sensor.Stats{RingBufferDropped: 5, CorrelationDropped: 3}},
+	}
+}
+
 func TestWriteLiveStats(t *testing.T) {
 	processor := newProcessor(time.Second)
 	if _, err := processor.Add(events.Event{
@@ -69,6 +76,8 @@ func TestWriteLiveStats(t *testing.T) {
 		"incidents=0",
 		"ring_dropped=7",
 		"correlation_dropped=3",
+		"collector_ring_dropped=execve:2,file_write:5",
+		"collector_correlation_dropped=execve:0,file_write:3",
 	} {
 		if !strings.Contains(output.String(), expected) {
 			t.Fatalf("output = %q, want substring %q", output.String(), expected)
