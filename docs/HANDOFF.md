@@ -9,6 +9,8 @@ pipeline is runnable without root, deterministic detection and compression are
 implemented, SQLite persistence is hardened, Linux amd64 eBPF collectors are
 present, the live event path uses a bounded async persistence queue, and the
 local LLM client is wired through the CLI.
+The async event persistence queue applies a bounded per-event save timeout and
+transitions to a closed/drop state on the first persistence error.
 Basic packaging assets are present for local service deployment: an install
 guide and a conservative systemd unit that stores data under
 `/var/lib/runtime-guard`, suppresses per-event JSON with `--quiet-events`, and
@@ -83,6 +85,9 @@ Implemented deterministic rules:
   globally. Dropped older history is reported in the incident JSON and CLI.
 - Incident storage upserts its supporting evidence rows and incident links in
   one transaction, independent of async event-queue timing.
+- Async event persistence uses a default 10-second per-event save timeout.
+  Persistence errors are surfaced through the queue error channel and future
+  enqueue attempts are dropped instead of being buffered without a worker.
 - The live CLI reports normalized, grouped, analyzed, incident, kernel
   ring-buffer-drop, syscall-correlation-drop, and event-persistence counters
   every 10 seconds by default and at shutdown.
@@ -127,9 +132,11 @@ GOMODCACHE=/tmp/runtime-guard-gomodcache \
 go test -tags=ebpf_smoke ./internal/ebpf -run '^$'
 ```
 
-All commands above passed on 2026-06-03. The tagged smoke command verifies
+All commands above passed on 2026-06-03 after the async persistence timeout and
+shared eBPF reader shutdown helper were added. The tagged smoke command verifies
 compilation only. Root smoke tests also passed on a BPF-capable Linux amd64
-host on 2026-06-03, including the connect syscall-exit correlation path:
+host on 2026-06-03 after the shared eBPF reader shutdown helper was added,
+including the connect syscall-exit correlation path:
 
 ```sh
 sudo go test -tags=ebpf_smoke ./internal/ebpf \

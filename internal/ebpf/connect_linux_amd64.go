@@ -158,15 +158,8 @@ func (collector *ConnectCollector) Run(ctx context.Context, sink chan<- events.E
 	}
 	defer reader.Close()
 
-	readerDone := make(chan struct{})
-	defer close(readerDone)
-	go func() {
-		select {
-		case <-ctx.Done():
-			_ = reader.Close()
-		case <-readerDone:
-		}
-	}()
+	stopReaderClose := closeOnContextCancel(ctx, reader)
+	defer stopReaderClose()
 
 	for {
 		record, err := reader.Read()
