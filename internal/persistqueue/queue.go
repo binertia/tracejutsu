@@ -13,6 +13,7 @@ import (
 
 const (
 	DefaultCapacity    = 8192
+	DefaultBatchSize   = 256
 	DefaultSaveTimeout = 10 * time.Second
 )
 
@@ -20,8 +21,13 @@ type EventSaver interface {
 	SaveEvent(context.Context, events.Event) error
 }
 
+type EventBatchSaver interface {
+	SaveEvents(context.Context, []events.Event) error
+}
+
 type Config struct {
 	Capacity    int
+	BatchSize   int
 	SaveTimeout time.Duration
 }
 
@@ -35,6 +41,7 @@ type Stats struct {
 type Queue struct {
 	saver       EventSaver
 	saveTimeout time.Duration
+	batchSize   int
 	events      chan events.Event
 	done        chan struct{}
 	errCh       chan error
@@ -60,6 +67,9 @@ func NewWithConfig(saver EventSaver, config Config) (*Queue, error) {
 	if config.Capacity <= 0 {
 		config.Capacity = DefaultCapacity
 	}
+	if config.BatchSize <= 0 {
+		config.BatchSize = DefaultBatchSize
+	}
 	if config.SaveTimeout < 0 {
 		return nil, errors.New("save timeout must be zero or positive")
 	}
@@ -70,6 +80,7 @@ func NewWithConfig(saver EventSaver, config Config) (*Queue, error) {
 	queue := &Queue{
 		saver:       saver,
 		saveTimeout: config.SaveTimeout,
+		batchSize:   config.BatchSize,
 		events:      make(chan events.Event, config.Capacity),
 		done:        make(chan struct{}),
 		errCh:       make(chan error, 1),
@@ -130,22 +141,43 @@ func (queue *Queue) run() {
 	defer close(queue.done)
 
 	for event := range queue.events {
-		if err := queue.saveEvent(event); err != nil {
-			queue.recordError(fmt.Errorf("save event %q: %w", event.EventID, err))
+		batch := queue.collectBatch(event)
+		if err := queue.saveBatch(batch); err != nil {
+			queue.recordError(len(batch), describeBatchError(batch, err))
 			return
 		}
-		atomic.AddUint64(&queue.persisted, 1)
+		atomic.AddUint64(&queue.persisted, uint64(len(batch)))
 	}
 }
 
-func (queue *Queue) recordError(err error) {
+func (queue *Queue) collectBatch(first events.Event) []events.Event {
+	if _, ok := queue.saver.(EventBatchSaver); !ok {
+		return []events.Event{first}
+	}
+	batch := make([]events.Event, 0, queue.batchSize)
+	batch = append(batch, first)
+	for len(batch) < queue.batchSize {
+		select {
+		case event, ok := <-queue.events:
+			if !ok {
+				return batch
+			}
+			batch = append(batch, event)
+		default:
+			return batch
+		}
+	}
+	return batch
+}
+
+func (queue *Queue) recordError(failedEvents int, err error) {
 	queue.mu.Lock()
 	defer queue.mu.Unlock()
 	if queue.err != nil {
 		return
 	}
 	queue.err = err
-	atomic.AddUint64(&queue.dropped, uint64(1+len(queue.events)))
+	atomic.AddUint64(&queue.dropped, uint64(failedEvents+len(queue.events)))
 	if !queue.closed {
 		queue.closed = true
 		close(queue.events)
@@ -156,8 +188,18 @@ func (queue *Queue) recordError(err error) {
 	}
 }
 
-func (queue *Queue) saveEvent(event events.Event) error {
+func (queue *Queue) saveBatch(batch []events.Event) error {
 	ctx, cancel := context.WithTimeout(context.Background(), queue.saveTimeout)
 	defer cancel()
-	return queue.saver.SaveEvent(ctx, event)
+	if batchSaver, ok := queue.saver.(EventBatchSaver); ok {
+		return batchSaver.SaveEvents(ctx, batch)
+	}
+	return queue.saver.SaveEvent(ctx, batch[0])
+}
+
+func describeBatchError(batch []events.Event, err error) error {
+	if len(batch) == 1 {
+		return fmt.Errorf("save event %q: %w", batch[0].EventID, err)
+	}
+	return fmt.Errorf("save event batch starting with %q (%d events): %w", batch[0].EventID, len(batch), err)
 }

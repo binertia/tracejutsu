@@ -109,7 +109,7 @@ state_name=$2
 state_dir="/var/lib/$state_name"
 db="$state_dir/runtime-guard.db"
 
-"$guard_bin" run --db "$db" --flush-after 2s --stats-interval 3s --event-buffer 16384 --persist-buffer 16384 --ring-buffer-size 8388608 --quiet-events &
+"$guard_bin" run --db "$db" --flush-after 2s --stats-interval 3s --event-buffer 16384 --persist-buffer 16384 --persist-batch-size 512 --ring-buffer-size 8388608 --quiet-events &
 guard=$!
 
 cleanup_guard() {

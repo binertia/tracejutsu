@@ -62,6 +62,30 @@ func (s contextBlockingSaver) SaveEvent(ctx context.Context, _ events.Event) err
 	return ctx.Err()
 }
 
+type recordingBatchSaver struct {
+	mu          sync.Mutex
+	batches     [][]string
+	singleCalls int
+}
+
+func (s *recordingBatchSaver) SaveEvent(context.Context, events.Event) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.singleCalls++
+	return nil
+}
+
+func (s *recordingBatchSaver) SaveEvents(_ context.Context, batch []events.Event) error {
+	ids := make([]string, 0, len(batch))
+	for _, event := range batch {
+		ids = append(ids, event.EventID)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.batches = append(s.batches, ids)
+	return nil
+}
+
 func TestQueueDropsWhenCapacityIsExceeded(t *testing.T) {
 	saver := &blockingSaver{
 		started: make(chan struct{}, 1),
@@ -139,6 +163,45 @@ func TestQueueCloseFlushesPendingEvents(t *testing.T) {
 	stats := queue.Stats()
 	if stats.Persisted != 2 || stats.Dropped != 0 {
 		t.Fatalf("stats = %#v, want persisted=2 dropped=0", stats)
+	}
+}
+
+func TestQueueUsesBatchSaverWhenAvailable(t *testing.T) {
+	saver := &recordingBatchSaver{}
+	queue, err := NewWithConfig(saver, Config{
+		Capacity:  8,
+		BatchSize: 4,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, eventID := range []string{"evt-1", "evt-2", "evt-3", "evt-4", "evt-5"} {
+		if !queue.Enqueue(events.Event{EventID: eventID}) {
+			t.Fatalf("enqueue %q dropped unexpectedly", eventID)
+		}
+	}
+	if err := queue.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	saver.mu.Lock()
+	defer saver.mu.Unlock()
+	if saver.singleCalls != 0 {
+		t.Fatalf("single SaveEvent calls = %d, want 0", saver.singleCalls)
+	}
+	var persisted int
+	for _, batch := range saver.batches {
+		persisted += len(batch)
+		if len(batch) > 4 {
+			t.Fatalf("batch size = %d, want <= 4", len(batch))
+		}
+	}
+	if persisted != 5 {
+		t.Fatalf("persisted batch events = %d, want 5", persisted)
+	}
+	if stats := queue.Stats(); stats.Persisted != 5 || stats.Dropped != 0 {
+		t.Fatalf("stats = %#v, want persisted=5 dropped=0", stats)
 	}
 }
 

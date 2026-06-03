@@ -9,8 +9,8 @@ pipeline is runnable without root, deterministic detection and compression are
 implemented, SQLite persistence is hardened, Linux amd64 eBPF collectors are
 present, the live event path uses a bounded async persistence queue, and the
 local LLM client is wired through the CLI. Live service runs expose tunable
-collector-to-analyzer, async persistence, and per-collector eBPF ring-buffer
-sizes.
+collector-to-analyzer, async persistence queue, async persistence batch, and
+per-collector eBPF ring-buffer sizes.
 The async event persistence queue applies a bounded per-event save timeout and
 transitions to a closed/drop state on the first persistence error.
 Basic packaging assets are present for local service deployment: an install
@@ -98,16 +98,18 @@ Implemented deterministic rules:
   globally. Dropped older history is reported in the incident JSON and CLI.
 - Incident storage upserts its supporting evidence rows and incident links in
   one transaction, independent of async event-queue timing.
-- Async event persistence uses a default 10-second per-event save timeout.
-  Persistence errors are surfaced through the queue error channel and future
-  enqueue attempts are dropped instead of being buffered without a worker.
-  Failed and buffered-but-unpersisted events are counted as dropped.
+- Async event persistence uses a default 10-second bounded save timeout. SQLite
+  persistence is batched when possible, while persistence errors are still
+  surfaced through the queue error channel and future enqueue attempts are
+  dropped instead of being buffered without a worker. Failed and
+  buffered-but-unpersisted events are counted as dropped.
 - The live CLI reports normalized, grouped, analyzed, incident, kernel
   ring-buffer-drop, syscall-correlation-drop, and event-persistence counters
   every 10 seconds by default and at shutdown.
-- `runtime-guard run --event-buffer`, `--persist-buffer`, and
-  `--ring-buffer-size` tune burst capacity. The packaged service uses 16384
-  event and persistence queue slots plus 8 MiB per collector ring buffer.
+- `runtime-guard run --event-buffer`, `--persist-buffer`,
+  `--persist-batch-size`, and `--ring-buffer-size` tune burst capacity. The
+  packaged service uses 16384 event and persistence queue slots, 512 events per
+  persistence transaction, and 8 MiB per collector ring buffer.
 - `runtime-guard run --quiet-events` suppresses per-event JSON for service-style
   operation while still printing incidents and periodic stats.
 - `runtime-guard run --stats-interval` controls periodic runtime stats; `0`

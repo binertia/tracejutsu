@@ -51,11 +51,11 @@ deterministic incidents. Tune its default 15-second inactivity threshold with
 incidents and stats without per-event JSON. Tune periodic stats with
 `--stats-interval`; `0` disables periodic stats but still prints final shutdown
 stats. Burst buffers can be tuned with `--event-buffer`, `--persist-buffer`,
-and `--ring-buffer-size`. Active candidates retain at most 4096 recent events
-each and 65536 events in total. Compressed incident reports expose dropped
-older events. Live collection prints ingestion, analysis, persistence, kernel
-ring-buffer drop, and syscall-correlation-drop counters every 10 seconds by
-default and at shutdown.
+`--persist-batch-size`, and `--ring-buffer-size`. Active candidates retain at
+most 4096 recent events each and 65536 events in total. Compressed incident
+reports expose dropped older events. Live collection prints ingestion,
+analysis, persistence, kernel ring-buffer drop, and syscall-correlation-drop
+counters every 10 seconds by default and at shutdown.
 
 Analyze a stored incident with a local `llama-server`-compatible HTTP endpoint:
 

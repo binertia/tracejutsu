@@ -4,7 +4,7 @@ After=local-fs.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/runtime-guard run --db /var/lib/runtime-guard/runtime-guard.db --flush-after 15s --stats-interval 1m --event-buffer 16384 --persist-buffer 16384 --ring-buffer-size 8388608 --quiet-events
+ExecStart=/usr/local/bin/runtime-guard run --db /var/lib/runtime-guard/runtime-guard.db --flush-after 15s --stats-interval 1m --event-buffer 16384 --persist-buffer 16384 --persist-batch-size 512 --ring-buffer-size 8388608 --quiet-events
 Restart=on-failure
 RestartSec=2s
 KillSignal=SIGTERM

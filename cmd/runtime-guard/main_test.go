@@ -152,6 +152,11 @@ func TestRunLiveRejectsInvalidBufferOptions(t *testing.T) {
 			want: "persist buffer size must be positive",
 		},
 		{
+			name: "persist batch size",
+			args: []string{"run", "--persist-batch-size", "0"},
+			want: "persist batch size must be positive",
+		},
+		{
 			name: "ring buffer positive",
 			args: []string{"run", "--ring-buffer-size", "0"},
 			want: "ring buffer size must be positive",

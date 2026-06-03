@@ -152,16 +152,20 @@ func runLive(args []string, out io.Writer) (err error) {
 	statsInterval := flags.Duration("stats-interval", defaultStatsInterval, "print runtime stats at this interval; 0 disables periodic stats")
 	eventBuffer := flags.Int("event-buffer", defaultLiveEventBuffer, "collector-to-analyzer event channel capacity")
 	persistBuffer := flags.Int("persist-buffer", persistqueue.DefaultCapacity, "async event persistence queue capacity")
+	persistBatchSize := flags.Int("persist-batch-size", persistqueue.DefaultBatchSize, "maximum normalized events per async persistence transaction")
 	ringBufferSize := flags.Int("ring-buffer-size", sensor.DefaultRingBufferSize, "per-collector eBPF ring buffer size in bytes; must be a power of two")
 	quietEvents := flags.Bool("quiet-events", false, "suppress per-event JSON output")
 	if err := flags.Parse(args); err != nil || len(flags.Args()) != 0 {
-		return errors.New("usage: runtime-guard run [--db path] [--flush-after duration] [--stats-interval duration] [--event-buffer count] [--persist-buffer count] [--ring-buffer-size bytes] [--quiet-events]")
+		return errors.New("usage: runtime-guard run [--db path] [--flush-after duration] [--stats-interval duration] [--event-buffer count] [--persist-buffer count] [--persist-batch-size count] [--ring-buffer-size bytes] [--quiet-events]")
 	}
 	if *eventBuffer <= 0 {
 		return errors.New("event buffer size must be positive")
 	}
 	if *persistBuffer <= 0 {
 		return errors.New("persist buffer size must be positive")
+	}
+	if *persistBatchSize <= 0 {
+		return errors.New("persist batch size must be positive")
 	}
 	if *ringBufferSize <= 0 {
 		return errors.New("ring buffer size must be positive")
@@ -191,7 +195,10 @@ func runLive(args []string, out io.Writer) (err error) {
 			return err
 		}
 		defer database.Close()
-		eventQueue, err = persistqueue.New(database, *persistBuffer)
+		eventQueue, err = persistqueue.NewWithConfig(database, persistqueue.Config{
+			Capacity:  *persistBuffer,
+			BatchSize: *persistBatchSize,
+		})
 		if err != nil {
 			return err
 		}
@@ -223,8 +230,8 @@ func runLive(args []string, out io.Writer) (err error) {
 	flushTicker := time.NewTicker(time.Second)
 	defer flushTicker.Stop()
 
-	fmt.Fprintf(out, "runtime-guard: collecting execve, IPv4/IPv6 connect, file write, and chmod events; quiet_events=%t stats_interval=%s event_buffer=%d persist_buffer=%d ring_buffer_size=%d; press Ctrl-C to stop\n",
-		*quietEvents, statsIntervalLabel(*statsInterval), *eventBuffer, *persistBuffer, *ringBufferSize)
+	fmt.Fprintf(out, "runtime-guard: collecting execve, IPv4/IPv6 connect, file write, and chmod events; quiet_events=%t stats_interval=%s event_buffer=%d persist_buffer=%d persist_batch_size=%d ring_buffer_size=%d; press Ctrl-C to stop\n",
+		*quietEvents, statsIntervalLabel(*statsInterval), *eventBuffer, *persistBuffer, *persistBatchSize, *ringBufferSize)
 	encoder := json.NewEncoder(out)
 	for {
 		select {
@@ -496,7 +503,7 @@ func writeUsage(out io.Writer) {
 
 Usage:
   runtime-guard demo [--db path] [fixture.json]       Run the fake-event incident pipeline
-  runtime-guard run [--db path] [--flush-after time] [--stats-interval time] [--event-buffer count] [--persist-buffer count] [--ring-buffer-size bytes] [--quiet-events]
+  runtime-guard run [--db path] [--flush-after time] [--stats-interval time] [--event-buffer count] [--persist-buffer count] [--persist-batch-size count] [--ring-buffer-size bytes] [--quiet-events]
                                                        Stream live runtime events and detect incidents (Linux amd64, root)
   runtime-guard events [--db path] [--limit count]    List stored normalized events
   runtime-guard incidents [--db path] [--limit count] List stored incidents
