@@ -10,7 +10,8 @@ implemented, SQLite persistence is hardened, Linux amd64 eBPF collectors are
 present, the live event path uses a bounded async persistence queue, and the
 local LLM client is wired through the CLI.
 
-Root-only eBPF smoke tests passed on a capable Linux amd64 host on 2026-06-03.
+Root-only eBPF smoke tests passed on a capable Linux amd64 host on 2026-06-03,
+including after file-write and chmod syscall-exit correlation was added.
 An actual local `llama-server` report also completed successfully after JSON
 Schema output enforcement was added: the response decoded, persisted, and
 rendered through `runtime-guard show`.
@@ -88,8 +89,6 @@ Implemented deterministic rules:
   hostname data when available. This is a bounded PID/start-time cache; the
   hostname is not guaranteed to match the container-runtime display name.
 - IPv6 connection capture is not implemented.
-- Root-only smoke tests passed before syscall-exit correlation was added. Rerun
-  them on a capable Linux amd64 host to validate the updated probes.
 - `runtime-guard show` appends an existing stored LLM analysis after the
   deterministic incident evidence when one is available.
 
@@ -144,8 +143,8 @@ go run ./cmd/runtime-guard show --db "$DB" inc-evt-001
 
 ## Recommended Next Task
 
-Rerun root-only eBPF smoke tests on a capable Linux amd64 host to validate the
-new file-write and chmod syscall-exit correlation probes.
+Add IPv6 `connect` capture and update connection normalization/tests so outbound
+incident timelines can cover both IPv4 and IPv6 endpoints.
 
 ## File Map
 
