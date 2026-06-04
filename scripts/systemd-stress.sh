@@ -117,6 +117,8 @@ require_command flock
 require_command systemd-run
 require_command systemctl
 require_command journalctl
+require_command mktemp
+require_command tee
 require_command timeout
 
 if ! timeout "$duration" true >/dev/null 2>&1; then
@@ -139,6 +141,7 @@ fi
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
+source "$repo_root/scripts/systemd-helper-lib.sh"
 
 run_id="$(date +%Y%m%d%H%M%S)-$$"
 unit="runtime-guard-stress-$run_id"
@@ -180,6 +183,7 @@ Will not:
   - generate artificial load
   - write outside the repo build path and the dedicated service state directory
 EOF
+runtime_guard_print_host_fingerprint
 
 if [[ "$assume_yes" -ne 1 ]]; then
 	if [[ ! -t 0 ]]; then
@@ -290,10 +294,13 @@ systemd_args=(
 	"$state_runner_script" "$state_binary" "$state_name" "$duration" "$stats_interval" "$collectors" "$file_write_min_bytes"
 )
 
+run_output_file="$(mktemp -t runtime-guard-systemd-run.XXXXXX)"
 set +e
-sudo systemd-run "${systemd_args[@]}"
-run_status=$?
+sudo systemd-run "${systemd_args[@]}" 2>&1 | tee "$run_output_file"
+run_status=${PIPESTATUS[0]}
 set -e
+run_output="$(cat "$run_output_file")"
+rm -f "$run_output_file"
 
 echo
 echo "===== systemctl status $service_unit ====="
@@ -308,7 +315,10 @@ fi
 
 echo
 echo "===== journalctl -u $service_unit ====="
-sudo journalctl -u "$service_unit" -n 240 --no-pager || true
+journal_output="$(sudo journalctl -u "$service_unit" -n 240 --no-pager 2>&1)" || journal_status=$?
+printf '%s\n' "$journal_output"
+
+runtime_guard_print_validation_summary "$run_status" "$run_output" "$journal_output"
 
 echo
 echo "State directory left for inspection: $state_dir"

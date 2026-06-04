@@ -83,4 +83,6 @@ known limitations, validation commands, and recommended next task. See
 [`docs/INSTALL.md`](docs/INSTALL.md) for local service installation and
 systemd deployment notes, including transient capability validation before
 installing a narrower service override. See [`docs/ARM_TEST.md`](docs/ARM_TEST.md)
-for the separate native arm64 VPS experiment.
+for the separate native arm64 VPS experiment and
+[`docs/STRESS_VALIDATION.md`](docs/STRESS_VALIDATION.md) for the active
+multi-host validation track.

@@ -263,7 +263,8 @@ go run ./cmd/runtime-guard show --db "$DB" inc-evt-001
 ## Recommended Next Task
 
 Run multi-kernel/container stress tests and refine least-privilege service
-deployment on specific target distributions.
+deployment on specific target distributions using
+[`STRESS_VALIDATION.md`](STRESS_VALIDATION.md).
 
 ## File Map
 
@@ -281,5 +282,6 @@ internal/persistqueue/    bounded async event persistence queue
 testdata/events/          fake normalized event fixtures
 docs/                     plan and this handoff
 docs/ARM_TEST.md          native arm64 VPS experiment
+docs/STRESS_VALIDATION.md multi-host stress validation matrix
 packaging/systemd/        local systemd service template
 ```

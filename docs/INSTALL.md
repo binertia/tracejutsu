@@ -193,6 +193,8 @@ validation. It does not install the service or generate artificial load.
 The smoke and stress helpers use a shared local lock and refuse overlapping
 helper runs; overlapping Runtime Guard runs can observe each other's SQLite WAL
 writes and invalidate file-write drop results.
+For repeatable multi-host validation, use the matrix in
+[`STRESS_VALIDATION.md`](STRESS_VALIDATION.md).
 Track the final `runtime stats` line, CPU time, memory peak, and whether
 `ring_dropped`, `correlation_dropped`, `persist_dropped`, or
 `incident_persist_dropped` remain zero. If ring drops are nonzero, also capture
