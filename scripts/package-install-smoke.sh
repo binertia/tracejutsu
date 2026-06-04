@@ -92,6 +92,10 @@ runtime_guard_package_installed() {
 	[[ "$status" == ii* ]]
 }
 
+journal_since_timestamp() {
+	date '+%Y-%m-%d %H:%M:%S'
+}
+
 refuse_existing_runtime_guard() {
 	local found=0
 	local path
@@ -292,7 +296,7 @@ if sudo systemctl is-enabled --quiet runtime-guard.service; then
 	exit 1
 fi
 
-journal_since="$(date --iso-8601=seconds)"
+journal_since="$(journal_since_timestamp)"
 
 echo
 echo "===== starting packaged service ====="
@@ -330,6 +334,11 @@ printf '%s\n' "$status_output"
 echo
 echo "===== journalctl -u runtime-guard.service ====="
 journal_output="$(sudo journalctl -u runtime-guard.service --since "$journal_since" --no-pager 2>&1)" || journal_status=$?
+if [[ "${journal_status:-0}" -ne 0 ]]; then
+	printf '%s\n' "$journal_output"
+	echo "journalctl --since failed; retrying without --since" >&2
+	journal_output="$(sudo journalctl -u runtime-guard.service --no-pager 2>&1)" || journal_status=$?
+fi
 printf '%s\n' "$journal_output"
 
 runtime_guard_print_validation_summary "$run_status" "" "$journal_output"
