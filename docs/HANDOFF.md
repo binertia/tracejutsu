@@ -377,7 +377,9 @@ go run ./cmd/runtime-guard show --db "$DB" inc-evt-001
 4. Generate `scripts/release-manifest.sh --dir dist --sign` and verify the
    published `SHA256SUMS` plus `SHA256SUMS.asc` on a clean machine.
 5. Save the full Debian Bookworm, Ubuntu 22.04, and Ubuntu 24.04 VPS logs under
-   a local validation directory and copy the final summaries into release notes.
+   a local validation directory, then bundle them with
+   `scripts/validation-bundle.sh` and copy the final summaries into release
+   notes.
 6. Repeat `scripts/systemd-stress.sh --duration 30m --stats-interval 1m --yes`
    on at least one VPS while applying light normal activity, then summarize it
    with `scripts/validation-summary.sh`.

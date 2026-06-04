@@ -110,6 +110,7 @@ run bash -n \
 	scripts/systemd-helper-lib.sh \
 	scripts/systemd-smoke.sh \
 	scripts/systemd-stress.sh \
+	scripts/validation-bundle.sh \
 	scripts/validation-summary.sh
 run go test ./...
 run go vet ./...

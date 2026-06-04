@@ -32,6 +32,8 @@ The systemd helpers print this host fingerprint and final validation summary
 automatically.
 If you save full helper output to a file, summarize it later with
 `scripts/validation-summary.sh`.
+Use `scripts/validation-bundle.sh` to package copied logs, host/repository
+metadata, summaries, and checksums into one archive for release evidence.
 
 ## Baseline Commands
 
@@ -83,6 +85,15 @@ scripts/systemd-stress.sh --duration 30m --stats-interval 1m --yes \
   2>&1 | tee runtime-guard-stress-hostname.log
 
 scripts/validation-summary.sh runtime-guard-stress-hostname.log
+
+scripts/validation-bundle.sh \
+  --name ubuntu-24-vps \
+  rg-host.log \
+  rg-release-check.log \
+  rg-root-smoke.log \
+  rg-systemd-smoke.log \
+  rg-systemd-stress.log \
+  rg-package-smoke.log
 ```
 
 ## Pass Criteria
