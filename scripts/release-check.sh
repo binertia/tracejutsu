@@ -61,6 +61,7 @@ run git diff --check
 run git diff --cached --check
 run bash -n \
 	scripts/release-check.sh \
+	scripts/build-release.sh \
 	scripts/systemd-helper-lib.sh \
 	scripts/systemd-smoke.sh \
 	scripts/systemd-stress.sh \

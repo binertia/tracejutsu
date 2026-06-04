@@ -145,6 +145,38 @@ func TestStatsIntervalLabel(t *testing.T) {
 	}
 }
 
+func TestRunVersion(t *testing.T) {
+	previousVersion := buildVersion
+	previousCommit := buildCommit
+	previousDate := buildDate
+	buildVersion = "v1.2.3"
+	buildCommit = "abc123"
+	buildDate = "2026-06-04T10:00:00Z"
+	defer func() {
+		buildVersion = previousVersion
+		buildCommit = previousCommit
+		buildDate = previousDate
+	}()
+
+	var output bytes.Buffer
+	if err := run([]string{"version"}, &output); err != nil {
+		t.Fatal(err)
+	}
+	for _, expected := range []string{
+		"runtime-guard v1.2.3",
+		"commit: abc123",
+		"build_date: 2026-06-04T10:00:00Z",
+	} {
+		if !strings.Contains(output.String(), expected) {
+			t.Fatalf("output = %q, want substring %q", output.String(), expected)
+		}
+	}
+
+	if err := run([]string{"version", "extra"}, &bytes.Buffer{}); err == nil {
+		t.Fatal("expected usage error")
+	}
+}
+
 func TestRunLiveRejectsInvalidBufferOptions(t *testing.T) {
 	for _, test := range []struct {
 		name string

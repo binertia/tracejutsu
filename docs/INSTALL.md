@@ -15,6 +15,13 @@ go test ./...
 go build -trimpath -o ./bin/runtime-guard ./cmd/runtime-guard
 ```
 
+For release artifacts, use the repository build script. It stamps
+`runtime-guard version` metadata and writes SHA256 checksums:
+
+```sh
+scripts/build-release.sh --version v0.1.0
+```
+
 Linux amd64 and native arm64 are supported for live eBPF collection. Build release
 binaries natively on the target architecture when possible. Cross-building an
 arm64 release binary from amd64 requires cgo and an aarch64 C compiler because
@@ -36,6 +43,7 @@ Confirm the installed binary runs:
 
 ```sh
 /usr/local/bin/runtime-guard --help
+/usr/local/bin/runtime-guard version
 ```
 
 ## Install Systemd Service

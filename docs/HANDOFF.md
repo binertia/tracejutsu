@@ -87,8 +87,9 @@ Before calling this distribution-grade, finish these tracks:
   kernel/procfs environment.
 - Validate install, service start, normal-use stress, log inspection, stop,
   uninstall, and rollback on a fresh target host.
-- Add release artifacts: versioned binaries or packages, checksums, signatures,
-  and reproducible build notes.
+- Extend release artifacts beyond the initial version-stamped tarball/checksum
+  builder if `.deb`, `.rpm`, detached signatures, or reproducible build notes
+  are required.
 - Expand release automation beyond the initial CI gate if publishing packages
   requires multiple architectures or package formats.
 - Document operational policy for SQLite database growth, retention, backup,
@@ -318,13 +319,15 @@ go run ./cmd/runtime-guard show --db "$DB" inc-evt-001
 ## Recommended Next Task
 
 1. Push or otherwise back up the signed commits after `origin/main`.
-2. Run the [`STRESS_VALIDATION.md`](STRESS_VALIDATION.md) matrix on an Ubuntu
+2. Run `scripts/build-release.sh --version v0.1.0` once on the release host and
+   inspect the generated tarball and `runtime-guard version` output.
+3. Run the [`STRESS_VALIDATION.md`](STRESS_VALIDATION.md) matrix on an Ubuntu
    LTS amd64 VM or VPS as the first external target.
-3. Save the full helper output and summarize it with
+4. Save the full helper output and summarize it with
    `scripts/validation-summary.sh`.
-4. If the Ubuntu run passes with zero required drops, repeat on a container host
+5. If the Ubuntu run passes with zero required drops, repeat on a container host
    or stricter kernel/procfs environment.
-5. Start packaging/release automation only after at least Debian and Ubuntu
+6. Start package-format work only after at least Debian and Ubuntu
    amd64 pass the same smoke/stress criteria.
 
 ## File Map

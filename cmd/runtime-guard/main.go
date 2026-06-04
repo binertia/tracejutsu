@@ -33,6 +33,12 @@ const (
 	defaultLiveEventBuffer = 8192
 )
 
+var (
+	buildVersion = "dev"
+	buildCommit  = "unknown"
+	buildDate    = "unknown"
+)
+
 var newLLMClient = func(config llm.HTTPConfig) (llm.Client, error) {
 	return llm.NewHTTPClient(config)
 }
@@ -67,6 +73,8 @@ func run(args []string, out io.Writer) error {
 		}
 		fmt.Fprintln(out, string(payload))
 		return nil
+	case "version":
+		return runVersion(args[1:], out)
 	case "events":
 		return runEvents(args[1:], out)
 	case "event-summary":
@@ -81,6 +89,16 @@ func run(args []string, out io.Writer) error {
 		writeUsage(out)
 		return fmt.Errorf("unknown command %q", args[0])
 	}
+}
+
+func runVersion(args []string, out io.Writer) error {
+	if len(args) != 0 {
+		return errors.New("usage: runtime-guard version")
+	}
+	fmt.Fprintf(out, "runtime-guard %s\n", report.TerminalText(buildVersion))
+	fmt.Fprintf(out, "commit: %s\n", report.TerminalText(buildCommit))
+	fmt.Fprintf(out, "build_date: %s\n", report.TerminalText(buildDate))
+	return nil
 }
 
 func runDemo(args []string, out io.Writer) error {
@@ -644,5 +662,6 @@ Usage:
   runtime-guard show [--db path] <incident_id>        Show a stored incident
   runtime-guard llm [--db path] <incident_id>         Analyze a stored incident with a local LLM
   runtime-guard rules                List planned deterministic rules
-  runtime-guard config               Print local-first default config`)
+  runtime-guard config               Print local-first default config
+  runtime-guard version              Print build version metadata`)
 }

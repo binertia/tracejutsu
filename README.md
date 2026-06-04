@@ -92,3 +92,9 @@ For the non-root release gate used by CI and pre-release checks, run:
 ```sh
 scripts/release-check.sh
 ```
+
+To build a version-stamped release tarball for the current Linux architecture:
+
+```sh
+scripts/build-release.sh --version v0.1.0
+```
