@@ -60,6 +60,7 @@ run go version
 run git diff --check
 run git diff --cached --check
 run bash -n \
+	scripts/dependency-review.sh \
 	scripts/release-check.sh \
 	scripts/build-release.sh \
 	scripts/systemd-helper-lib.sh \
@@ -81,6 +82,8 @@ else
 	echo
 	echo "===== govulncheck skipped ====="
 fi
+
+run scripts/dependency-review.sh --out /tmp/runtime-guard-dependency-review.md
 
 echo
 echo "release check passed"

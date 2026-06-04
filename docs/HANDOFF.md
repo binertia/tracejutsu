@@ -96,8 +96,8 @@ Before calling this distribution-grade, finish these tracks:
   compaction, and log retention.
 - Decide the release claim for arm64. Keep it experimental unless a native
   arm64 host completes the smoke/stress runbook in [`ARM_TEST.md`](ARM_TEST.md).
-- Complete dependency/license review before publishing packages for other
-  users.
+- Review `scripts/dependency-review.sh --out dist/dependency-review.md` output
+  before publishing packages for other users.
 
 ## Implemented MVP Surface
 
@@ -262,6 +262,8 @@ go test -tags=ebpf_smoke ./internal/ebpf -run '^$'
 GOCACHE=/tmp/runtime-guard-gocache \
 GOMODCACHE=/tmp/runtime-guard-gomodcache \
 go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
+scripts/dependency-review.sh --out /tmp/runtime-guard-dependency-review.md
 ```
 
 All commands above passed on 2026-06-04 after the validation helper hardening
@@ -321,13 +323,15 @@ go run ./cmd/runtime-guard show --db "$DB" inc-evt-001
 1. Push or otherwise back up the signed commits after `origin/main`.
 2. Run `scripts/build-release.sh --version v0.1.0` once on the release host and
    inspect the generated tarball and `runtime-guard version` output.
-3. Run the [`STRESS_VALIDATION.md`](STRESS_VALIDATION.md) matrix on an Ubuntu
+3. Generate `scripts/dependency-review.sh --out dist/dependency-review.md` and
+   review the dependency/license inventory.
+4. Run the [`STRESS_VALIDATION.md`](STRESS_VALIDATION.md) matrix on an Ubuntu
    LTS amd64 VM or VPS as the first external target.
-4. Save the full helper output and summarize it with
+5. Save the full helper output and summarize it with
    `scripts/validation-summary.sh`.
-5. If the Ubuntu run passes with zero required drops, repeat on a container host
+6. If the Ubuntu run passes with zero required drops, repeat on a container host
    or stricter kernel/procfs environment.
-6. Start package-format work only after at least Debian and Ubuntu
+7. Start package-format work only after at least Debian and Ubuntu
    amd64 pass the same smoke/stress criteria.
 
 ## File Map

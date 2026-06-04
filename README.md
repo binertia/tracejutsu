@@ -98,3 +98,9 @@ To build a version-stamped release tarball for the current Linux architecture:
 ```sh
 scripts/build-release.sh --version v0.1.0
 ```
+
+To generate the dependency/license inventory:
+
+```sh
+scripts/dependency-review.sh --out dist/dependency-review.md
+```
