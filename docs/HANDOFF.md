@@ -53,6 +53,16 @@ normalized events, produced one deterministic incident from local build activity
 and ended with zero ring-buffer, syscall-correlation, event-persistence, and
 incident-persistence drops. It consumed 3m14.901s CPU and peaked at 117.2M
 memory.
+Later on 2026-06-04, the full non-root release gate passed on bare-metal
+Debian 13 (trixie), kernel `6.12.90+deb13.1-amd64`, systemd 257, cgroup v2,
+`x86_64`, with `govulncheck` reporting no vulnerabilities. The same host then
+passed transient systemd smoke and a 30-minute all-collector stress run with the
+packaged narrow capability set `CAP_BPF CAP_PERFMON CAP_SYS_RESOURCE`. The
+stress run processed 193,737 normalized events, grouped 7,177 candidates, and
+ended with zero ring-buffer, syscall-correlation, event-persistence, and
+incident-persistence drops. Per-collector ring-buffer and correlation drops
+were also zero for `execve`, `connect`, `file_write`, and `chmod`. It ran for
+30m5.283s, consumed 5m17.918s CPU, and peaked at 246.6M memory.
 Native arm64 support has compile coverage and a separate experimental VPS
 runbook in [`ARM_TEST.md`](ARM_TEST.md). Real arm64 smoke/stress validation is
 not blocking the next amd64 hardening task.
@@ -84,10 +94,10 @@ The current handoff target is a production/distribution-grade release. The
 approximate readiness is:
 
 - MVP feature surface: **100% complete**.
-- Personal Debian amd64 install readiness: **90-95% complete**.
-- Debian/Ubuntu amd64 production release: **70-75% complete**.
-- Broad production/distribution-grade release: **60-65% complete**.
-- Multi-distro amd64 plus production arm64 release: **55-60% complete**.
+- Personal Debian amd64 install readiness: **93-96% complete**.
+- Debian/Ubuntu amd64 production release: **75-80% complete**.
+- Broad production/distribution-grade release: **65-70% complete**.
+- Multi-distro amd64 plus production arm64 release: **58-63% complete**.
 
 The remaining percentage is mostly release engineering and validation, not core
 MVP functionality.
@@ -290,10 +300,12 @@ scripts/dependency-review.sh --out /tmp/runtime-guard-dependency-review.md
 ```
 
 All commands above passed on 2026-06-04 after the validation helper hardening
-was added; `govulncheck` reported no vulnerabilities. The tagged smoke command
-verifies compilation only. Root smoke tests also passed on a BPF-capable Linux
-amd64 host on 2026-06-03 after the shared eBPF reader shutdown helper was
-added, including the connect syscall-exit correlation path:
+was added. The latest release gate also passed on bare-metal Debian 13 after
+release manifest and Debian maintainer hardening; `govulncheck` reported no
+vulnerabilities. The tagged smoke command verifies compilation only. Root smoke
+tests also passed on a BPF-capable Linux amd64 host on 2026-06-03 after the
+shared eBPF reader shutdown helper was added, including the connect syscall-exit
+correlation path:
 
 ```sh
 sudo go test -tags=ebpf_smoke ./internal/ebpf \
@@ -310,17 +322,19 @@ sudo env \
   -run 'TestConnectCollectorSmoke' -v
 ```
 
-The current systemd sandbox smoke helper also passed on 2026-06-03 after
-service buffer tuning and async SQLite batching:
+The current systemd sandbox smoke helper also passed on 2026-06-04 on
+bare-metal Debian 13 with the packaged narrow capability set:
 
 ```sh
 scripts/systemd-smoke.sh
 ```
 
-The latest short run reached about 51k normalized events and ended with:
+The latest short run processed 1,225 normalized events and ended with:
 
 ```text
-ring_dropped=0 correlation_dropped=0 persist_dropped=0
+ring_dropped=0 correlation_dropped=0 persist_dropped=0 incident_persist_dropped=0
+collector_ring_dropped=execve:0,connect:0,file_write:0,chmod:0
+collector_correlation_dropped=execve:0,connect:0,file_write:0,chmod:0
 ```
 
 Run the non-root fake pipeline:
