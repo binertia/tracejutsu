@@ -416,6 +416,18 @@ func writeAnalyses(ctx context.Context, out io.Writer, database *store.SQLite, i
 	return nil
 }
 
+func openExistingSQLite(path string) (*store.SQLite, error) {
+	if path != ":memory:" {
+		if _, err := os.Lstat(path); err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				return nil, fmt.Errorf("SQLite database does not exist: %q", path)
+			}
+			return nil, fmt.Errorf("inspect SQLite database path: %w", err)
+		}
+	}
+	return store.OpenSQLite(path)
+}
+
 func runEvents(args []string, out io.Writer) error {
 	flags := flag.NewFlagSet("events", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
@@ -425,7 +437,7 @@ func runEvents(args []string, out io.Writer) error {
 		return errors.New("usage: runtime-guard events [--db path] [--limit count]")
 	}
 
-	database, err := store.OpenSQLite(*databasePath)
+	database, err := openExistingSQLite(*databasePath)
 	if err != nil {
 		return err
 	}
@@ -454,7 +466,7 @@ func runEventSummary(args []string, out io.Writer) error {
 		return errors.New("usage: runtime-guard event-summary [--db path] [--type event_type] [--limit count]")
 	}
 
-	database, err := store.OpenSQLite(*databasePath)
+	database, err := openExistingSQLite(*databasePath)
 	if err != nil {
 		return err
 	}
@@ -508,7 +520,7 @@ func runIncidents(args []string, out io.Writer) error {
 		return errors.New("usage: runtime-guard incidents [--db path] [--limit count]")
 	}
 
-	database, err := store.OpenSQLite(*databasePath)
+	database, err := openExistingSQLite(*databasePath)
 	if err != nil {
 		return err
 	}
@@ -537,7 +549,7 @@ func runShow(args []string, out io.Writer) error {
 		return errors.New("usage: runtime-guard show [--db path] <incident_id>")
 	}
 
-	database, err := store.OpenSQLite(*databasePath)
+	database, err := openExistingSQLite(*databasePath)
 	if err != nil {
 		return err
 	}
@@ -581,7 +593,7 @@ func runLLM(args []string, out io.Writer) error {
 		return errors.New("usage: runtime-guard llm [--db path] [--endpoint url] [--model name] [--timeout duration] [--allow-remote-endpoint] [--preserve-raw-response] <incident_id>")
 	}
 
-	database, err := store.OpenSQLite(*databasePath)
+	database, err := openExistingSQLite(*databasePath)
 	if err != nil {
 		return err
 	}

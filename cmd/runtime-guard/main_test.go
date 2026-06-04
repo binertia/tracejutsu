@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -363,5 +364,38 @@ func TestRunEventSummary(t *testing.T) {
 		if !strings.Contains(output.String(), expected) {
 			t.Fatalf("output = %q, want substring %q", output.String(), expected)
 		}
+	}
+}
+
+func TestInspectionCommandsRejectMissingDatabase(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		args []string
+	}{
+		{name: "events", args: []string{"events"}},
+		{name: "event-summary", args: []string{"event-summary"}},
+		{name: "incidents", args: []string{"incidents"}},
+		{name: "show", args: []string{"show", "inc-missing"}},
+		{name: "llm", args: []string{"llm", "inc-missing"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			databaseDirectory := t.TempDir()
+			if err := os.Chmod(databaseDirectory, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			databasePath := filepath.Join(databaseDirectory, "missing.db")
+			args := append([]string{test.args[0], "--db", databasePath}, test.args[1:]...)
+
+			err := run(args, &bytes.Buffer{})
+			if err == nil {
+				t.Fatal("expected missing database error")
+			}
+			if !strings.Contains(err.Error(), "SQLite database does not exist") {
+				t.Fatalf("error = %q, want missing database", err.Error())
+			}
+			if _, statErr := os.Stat(databasePath); !errors.Is(statErr, os.ErrNotExist) {
+				t.Fatalf("database stat error = %v, want not exist", statErr)
+			}
+		})
 	}
 }
