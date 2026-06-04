@@ -135,6 +135,8 @@ if [[ "$assume_yes" -ne 1 ]]; then
 	esac
 fi
 
+runtime_guard_require_sudo_access
+
 mkdir -p "$repo_root/bin"
 GOCACHE="${GOCACHE:-/tmp/runtime-guard-gocache}" \
 GOMODCACHE="${GOMODCACHE:-/tmp/runtime-guard-gomodcache}" \

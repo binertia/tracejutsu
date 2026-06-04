@@ -67,6 +67,19 @@ runtime_guard_print_host_fingerprint() {
 	echo "container: $(runtime_guard_container)"
 }
 
+runtime_guard_require_sudo_access() {
+	if sudo -n true 2>/dev/null; then
+		return
+	fi
+	if [[ -t 0 ]]; then
+		sudo -v
+		return
+	fi
+	echo "sudo credentials are required before building temporary test artifacts" >&2
+	echo "run this helper from an interactive terminal or configure non-interactive sudo" >&2
+	exit 1
+}
+
 runtime_guard_print_validation_summary() {
 	local run_status=$1
 	local run_output=$2
