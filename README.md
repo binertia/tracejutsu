@@ -112,6 +112,12 @@ To build an experimental RPM package when `rpmbuild` is available:
 scripts/build-rpm.sh --version v0.1.0 --packager "Your Name <you@example.com>" --license "LicenseRef-Private"
 ```
 
+On a fresh Fedora/RHEL-compatible validation host, smoke test the RPM lifecycle:
+
+```sh
+scripts/rpm-install-smoke.sh --rpm dist/tracejutsu-0.1.0-1.x86_64.rpm --duration 10m --yes
+```
+
 Set `SOURCE_DATE_EPOCH` to a Unix timestamp when repeatable release metadata
 and archive/package timestamps are required.
 

@@ -29,6 +29,13 @@ When `rpmbuild` is available, an experimental RPM can also be built:
 scripts/build-rpm.sh --version v0.1.0 --packager "Your Name <you@example.com>" --license "LicenseRef-Private"
 ```
 
+On a fresh Fedora/RHEL-compatible validation host, test the RPM package
+lifecycle before using the RPM on a personal machine or production host:
+
+```sh
+scripts/rpm-install-smoke.sh --rpm dist/tracejutsu-0.1.0-1.x86_64.rpm --duration 10m --yes
+```
+
 Set `SOURCE_DATE_EPOCH` to a Unix timestamp when repeatable release metadata
 and archive/package timestamps are required.
 Set `--maintainer` or `TRACEJUTSU_PACKAGE_MAINTAINER` before publishing a
@@ -86,6 +93,8 @@ removes the package, and leaves `/var/lib/tracejutsu` for inspection unless
 helper to build and test a temporary package. Run it inside `tmux` or another
 persistent session on SSH hosts so a client disconnect does not interrupt the
 package cleanup path.
+The RPM smoke helper follows the same safety model, using `--rpm` for release
+artifacts and building a temporary RPM only when `--rpm` is omitted.
 
 Before publishing artifacts, generate a single checksum manifest for the built
 tarball, Debian package, and any RPM package. Add `--sign` to write and verify

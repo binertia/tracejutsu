@@ -141,6 +141,13 @@ persistent session makes the resulting log and package state easier to audit.
 Omit `--deb` only when intentionally testing a helper-built temporary package
 instead of the release artifact.
 
+On Fedora/RHEL-compatible targets where an RPM is being evaluated, run the RPM
+lifecycle helper instead:
+
+```sh
+scripts/rpm-install-smoke.sh --rpm dist/tracejutsu-0.1.0-1.x86_64.rpm --duration 10m --yes
+```
+
 Save logs when comparing hosts:
 
 ```sh

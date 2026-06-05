@@ -131,6 +131,7 @@ run bash -n \
 	scripts/build-rpm.sh \
 	scripts/release-manifest.sh \
 	scripts/package-install-smoke.sh \
+	scripts/rpm-install-smoke.sh \
 	scripts/container-workload.sh \
 	scripts/systemd-helper-lib.sh \
 	scripts/systemd-smoke.sh \
@@ -155,8 +156,9 @@ else
 fi
 if command -v rpmbuild >/dev/null 2>&1; then
 	check_packager="Tracejutsu Check <check@example.invalid>"
-	run scripts/build-rpm.sh --version "$check_version" --out "$release_dir" --packager "$check_packager"
-	verify_rpm_artifact "$release_dir" "$check_version" "$check_packager"
+	rpm_check_version="${check_version//-/.}"
+	run scripts/build-rpm.sh --version "$rpm_check_version" --out "$release_dir" --packager "$check_packager"
+	verify_rpm_artifact "$release_dir" "$rpm_check_version" "$check_packager"
 else
 	echo
 	echo "===== RPM package build skipped: rpmbuild unavailable ====="

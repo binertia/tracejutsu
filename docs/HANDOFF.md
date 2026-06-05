@@ -142,8 +142,9 @@ it runs an unprivileged Docker or Podman container without host mounts or host
 networking while the normal systemd stress helper observes the host.
 An experimental RPM builder is also present. It mirrors the Debian package
 layout, requires `rpmbuild` only when invoked, writes a per-package checksum,
-and is included in the release manifest when RPM artifacts exist. RPM install
-smoke validation is still pending.
+and is included in the release manifest when RPM artifacts exist. A matching
+RPM install-smoke helper is present for fresh Fedora/RHEL-compatible validation
+hosts. Real RPM build/install smoke validation is still pending.
 
 The current handoff target is a production/distribution-grade release. The
 approximate readiness is:
@@ -169,12 +170,12 @@ Before calling this distribution-grade, finish these tracks:
   capability fallback beyond the packaged narrow set. Docker/containerd host
   metadata capture is already validated on Debian 13 with
   `scripts/container-workload.sh`.
-- Validate the experimental RPM builder on a Fedora/RHEL-compatible host if
-  RPM distribution is required. The current tarball, Debian package, and RPM
-  builders honor `SOURCE_DATE_EPOCH` for build metadata and staged artifact
-  timestamps where their toolchains support it, and
-  `scripts/release-manifest.sh --sign` can produce a detached signature for the
-  combined checksum manifest.
+- Validate the experimental RPM builder and `scripts/rpm-install-smoke.sh` on a
+  Fedora/RHEL-compatible host if RPM distribution is required. The current
+  tarball, Debian package, and RPM builders honor `SOURCE_DATE_EPOCH` for build
+  metadata and staged artifact timestamps where their toolchains support it,
+  and `scripts/release-manifest.sh --sign` can produce a detached signature for
+  the combined checksum manifest.
 - Expand local release automation if publishing packages requires multiple
   architectures or package formats.
 - Validate the operational policy in [`OPERATIONS.md`](OPERATIONS.md) under an
