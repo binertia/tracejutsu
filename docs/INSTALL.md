@@ -96,6 +96,14 @@ package cleanup path.
 The RPM smoke helper follows the same safety model, using `--rpm` for release
 artifacts and building a temporary RPM only when `--rpm` is omitted.
 
+When you intentionally leave the package installed after validation, run the
+operations helper to check the installed database, runtime stats, and online
+backup path without stopping the service:
+
+```sh
+scripts/ops-validation.sh --yes
+```
+
 Before publishing artifacts, generate a single checksum manifest for the built
 tarball, Debian package, and any RPM package. Add `--sign` to write and verify
 an armored detached GPG signature:

@@ -148,6 +148,14 @@ lifecycle helper instead:
 scripts/rpm-install-smoke.sh --rpm dist/tracejutsu-0.1.0-1.x86_64.rpm --duration 10m --yes
 ```
 
+To validate operational inspection and online backup behavior on an installed
+service, leave the package installed during package smoke and then run:
+
+```sh
+scripts/package-install-smoke.sh --deb dist/tracejutsu_0.1.0_amd64.deb --duration 10m --keep-installed --yes
+scripts/ops-validation.sh --yes
+```
+
 Save logs when comparing hosts:
 
 ```sh

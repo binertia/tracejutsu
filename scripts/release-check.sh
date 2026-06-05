@@ -132,6 +132,7 @@ run bash -n \
 	scripts/release-manifest.sh \
 	scripts/package-install-smoke.sh \
 	scripts/rpm-install-smoke.sh \
+	scripts/ops-validation.sh \
 	scripts/container-workload.sh \
 	scripts/systemd-helper-lib.sh \
 	scripts/systemd-smoke.sh \

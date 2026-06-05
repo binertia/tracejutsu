@@ -116,6 +116,10 @@ not blocking the next amd64 hardening task.
 
 Recent signed production-hardening commits after `origin/main`:
 
+- `685e1fa` adds installed-service operations validation for db-stats, WAL
+  mode, runtime stats, and online SQLite backup checks.
+- `85c787e` adds a fresh-host RPM install smoke helper.
+- `776e180` adds experimental RPM package building and manifest support.
 - `4e835b0` lets the package install smoke helper validate an existing release
   `.deb` and its checksum before installing it.
 - `2bc4c12` makes Debian package maintainer metadata configurable.
@@ -145,6 +149,10 @@ layout, requires `rpmbuild` only when invoked, writes a per-package checksum,
 and is included in the release manifest when RPM artifacts exist. A matching
 RPM install-smoke helper is present for fresh Fedora/RHEL-compatible validation
 hosts. Real RPM build/install smoke validation is still pending.
+An operations validation helper is also present for installed service hosts; it
+checks service state, SQLite `db-stats`, WAL mode, file-write summary, incident
+listing, recent runtime stats, and an online SQLite backup without stopping the
+service.
 
 The current handoff target is a production/distribution-grade release. The
 approximate readiness is:
@@ -178,8 +186,9 @@ Before calling this distribution-grade, finish these tracks:
   the combined checksum manifest.
 - Expand local release automation if publishing packages requires multiple
   architectures or package formats.
-- Validate the operational policy in [`OPERATIONS.md`](OPERATIONS.md) under an
-  installed service on each release target.
+- Validate `scripts/ops-validation.sh --yes` under an installed service on each
+  release target. Run package smoke with `--keep-installed` first when using a
+  disposable validation host.
 - Decide the release claim for arm64. Keep it experimental unless a native
   arm64 host completes the smoke/stress runbook in [`ARM_TEST.md`](ARM_TEST.md).
 - Review `scripts/dependency-review.sh --out dist/dependency-review.md` output

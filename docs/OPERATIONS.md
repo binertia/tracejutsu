@@ -1,8 +1,21 @@
 # Tracejutsu Operations
 
-This guide covers basic maintenance for an installed local service. Runtime
-Guard stores normalized events, incidents, and optional LLM reports in SQLite
+This guide covers basic maintenance for an installed local service. Tracejutsu
+stores normalized events, incidents, and optional LLM reports in SQLite
 under `/var/lib/tracejutsu/tracejutsu.db`.
+
+Run the operations validation helper after package lifecycle validation with
+`--keep-installed`, or on an installed service host, to check the database and
+backup path without stopping the service:
+
+```sh
+scripts/ops-validation.sh --yes
+```
+
+The helper inspects service state, database permissions, `db-stats`, file-write
+event summary, incident listing, recent runtime stats, and a SQLite online
+backup under `/var/backups/tracejutsu`. Add `--skip-backup` when `sqlite3` is
+not available or when you only want read-only inspection.
 
 ## Monitor Growth
 
