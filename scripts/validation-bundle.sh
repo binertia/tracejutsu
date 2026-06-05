@@ -6,11 +6,12 @@ cd "$repo_root"
 
 usage() {
 	cat <<'EOF'
-Usage: scripts/validation-bundle.sh [--name NAME] [--out DIR] LOGFILE [...]
+Usage: scripts/validation-bundle.sh [--name NAME] [--out DIR] [--supporting FILE] LOGFILE [...]
 
 Collects Runtime Guard validation logs into a small release-evidence bundle.
 The bundle includes:
   - copied log files
+  - optional supporting evidence files that are copied but not pass/fail checked
   - host fingerprint captured on the machine running this command
   - repository metadata
   - validation-summary output
@@ -21,15 +22,18 @@ The script exits nonzero if scripts/validation-summary.sh marks any supplied
 log as failed, but it still writes the bundle for inspection first.
 
 Options:
-  --name NAME  Bundle directory/archive name. Default: timestamp-hostname.
-  --out DIR    Output directory. Default: validation-artifacts.
-  --help       Show this help.
+  --name NAME        Bundle directory/archive name. Default: timestamp-hostname.
+  --out DIR          Output directory. Default: validation-artifacts.
+  --supporting FILE  Copy FILE into supporting/ without validation-summary checks.
+                     Repeat for container workload logs, event samples, etc.
+  --help             Show this help.
 EOF
 }
 
 bundle_name=""
 out_dir="validation-artifacts"
 logs=()
+supporting_files=()
 
 while [[ $# -gt 0 ]]; do
 	case "$1" in
@@ -47,6 +51,14 @@ while [[ $# -gt 0 ]]; do
 			exit 2
 		fi
 		out_dir=$2
+		shift 2
+		;;
+	--supporting)
+		if [[ $# -lt 2 ]]; then
+			echo "--supporting requires a value" >&2
+			exit 2
+		fi
+		supporting_files+=("$2")
 		shift 2
 		;;
 	--help|-h)
@@ -103,6 +115,12 @@ for log in "${logs[@]}"; do
 		exit 1
 	fi
 done
+for file in "${supporting_files[@]}"; do
+	if [[ ! -r "$file" ]]; then
+		echo "cannot read supporting file: $file" >&2
+		exit 1
+	fi
+done
 
 source "$repo_root/scripts/systemd-helper-lib.sh"
 
@@ -125,7 +143,7 @@ if [[ -e "$bundle_dir" || -e "$archive" ]]; then
 	exit 1
 fi
 
-mkdir -p "$bundle_dir/logs"
+mkdir -p "$bundle_dir/logs" "$bundle_dir/supporting"
 copied_logs=()
 index=0
 for log in "${logs[@]}"; do
@@ -133,6 +151,14 @@ for log in "${logs[@]}"; do
 	dest="$bundle_dir/logs/$(printf '%02d-%s' "$index" "$(basename "$log")")"
 	cp -- "$log" "$dest"
 	copied_logs+=("$dest")
+done
+copied_supporting=()
+index=0
+for file in "${supporting_files[@]}"; do
+	index=$((index + 1))
+	dest="$bundle_dir/supporting/$(printf '%02d-%s' "$index" "$(basename "$file")")"
+	cp -- "$file" "$dest"
+	copied_supporting+=("$dest")
 done
 
 runtime_guard_print_host_fingerprint >"$bundle_dir/HOST.txt"
@@ -151,6 +177,11 @@ runtime_guard_print_host_fingerprint >"$bundle_dir/HOST.txt"
 	for log in "${logs[@]}"; do
 		echo "- $log"
 	done
+	echo
+	echo "supporting_files:"
+	for file in "${supporting_files[@]}"; do
+		echo "- $file"
+	done
 } >"$bundle_dir/METADATA.txt"
 
 set +e
@@ -160,7 +191,11 @@ set -e
 
 (
 	cd "$bundle_dir"
-	sha256sum HOST.txt METADATA.txt SUMMARY.txt logs/* >SHA256SUMS
+	checksum_files=(HOST.txt METADATA.txt SUMMARY.txt logs/*)
+	if [[ "${#copied_supporting[@]}" -gt 0 ]]; then
+		checksum_files+=(supporting/*)
+	fi
+	sha256sum "${checksum_files[@]}" >SHA256SUMS
 )
 
 tar -C "$out_dir" -czf "$archive" "$bundle_name"

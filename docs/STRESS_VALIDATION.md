@@ -115,6 +115,17 @@ For a container-host pass, the stress helper must meet the normal zero-drop
 criteria and at least one stored event from the workload should include a
 non-empty `container_id`. `container_name` is best-effort and may be a container
 hostname rather than the runtime display name.
+Save the metadata sample to a supporting log before cleaning the stress state
+directory:
+
+```sh
+sudo /var/lib/runtime-guard-stress-.../runtime-guard-stress \
+  events \
+  --db /var/lib/runtime-guard-stress-.../runtime-guard.db \
+  --limit 100000 |
+  grep -m 5 -E '"container_id":"[^"]+"' \
+  > rg-container-metadata-sample.log
+```
 
 After transient smoke/stress pass on a fresh Debian or Ubuntu target, validate
 the actual Debian package lifecycle:
@@ -143,6 +154,17 @@ scripts/validation-bundle.sh \
   rg-systemd-smoke.log \
   rg-systemd-stress.log \
   rg-package-smoke.log
+```
+
+For container-host runs, keep the stress log as the pass/fail input and attach
+the workload log plus container metadata sample as supporting evidence:
+
+```sh
+scripts/validation-bundle.sh \
+  --name debian-13-docker-container-host \
+  --supporting rg-container-workload-meta.log \
+  --supporting rg-container-metadata-sample.log \
+  rg-systemd-stress-container-meta.log
 ```
 
 ## Pass Criteria
