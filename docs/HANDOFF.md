@@ -96,12 +96,28 @@ Stored container workload events included non-empty container metadata, for
 example a 64-character `container_id`, `container_name=8f4d99a9e4d1`,
 `parent_process_name=containerd-shim`, and container process paths such as
 `/bin/sh`, `/bin/mkdir`, and `/bin/chmod`.
+Also on 2026-06-05, a fresh Debian 12 Bookworm bare-metal VPS completed the
+release artifact validation path on host `guest`, kernel
+`6.1.0-49-amd64`, systemd `252.39-1~deb12u2`, cgroup v2, `x86_64`, Go
+`1.26.4`, no virtualization detected, and no container environment detected.
+Transient systemd smoke processed 10 normalized events, grouped and analyzed 4
+candidates, and ended with zero required drops. The smoke run completed in
+8.111s and consumed 171ms CPU. A 30-minute all-collector systemd stress run
+processed 70 normalized events, grouped and analyzed 25 candidates, persisted 2
+incidents, and ended with zero ring-buffer, syscall-correlation,
+event-persistence, and incident-persistence drops. The stress run consumed
+932ms CPU. The actual release Debian package installed from
+`dist/tracejutsu_0.1.0_amd64.deb` then completed package lifecycle smoke,
+processed 57 normalized events, grouped and analyzed 44 candidates, removed the
+package cleanly, and ended with zero required drops.
 Native arm64 support has compile coverage and a separate experimental VPS
 runbook in [`ARM_TEST.md`](ARM_TEST.md). Real arm64 smoke/stress validation is
 not blocking the next amd64 hardening task.
 
 Recent signed production-hardening commits after `origin/main`:
 
+- `4e835b0` lets the package install smoke helper validate an existing release
+  `.deb` and its checksum before installing it.
 - `2bc4c12` makes Debian package maintainer metadata configurable.
 - `48faeab` adds the combined release checksum manifest and optional detached
   GPG signing workflow.
@@ -129,9 +145,9 @@ The current handoff target is a production/distribution-grade release. The
 approximate readiness is:
 
 - MVP feature surface: **100% complete**.
-- Personal Debian amd64 install readiness: **93-96% complete**.
-- Debian/Ubuntu amd64 production release: **87-92% complete**.
-- Broad production/distribution-grade release: **76-81% complete**.
+- Personal Debian amd64 install readiness: **95-97% complete**.
+- Debian/Ubuntu amd64 production release: **89-93% complete**.
+- Broad production/distribution-grade release: **78-83% complete**.
 - Multi-distro amd64 plus production arm64 release: **65-70% complete**.
 
 The remaining percentage is mostly release engineering and validation, not core
@@ -141,10 +157,10 @@ MVP functionality.
 
 Before calling this distribution-grade, finish these tracks:
 
-- Keep the current Docker/containerd evidence bundle and use the summarized VPS
-  results already recorded here for private-beta release notes. Older Debian
-  Bookworm, Ubuntu 22.04, and Ubuntu 24.04 VPS full logs are useful but no
-  longer blocking.
+- Keep the current Docker/containerd evidence bundle and use the summarized
+  Debian 12, Ubuntu 22.04, Debian 13, and container-host results already
+  recorded here for private-beta release notes. Older Debian Bookworm and
+  Ubuntu 24.04 VPS full logs are useful but no longer blocking.
 - Validate a stricter kernel/procfs environment if target deployments require
   capability fallback beyond the packaged narrow set. Docker/containerd host
   metadata capture is already validated on Debian 13 with
