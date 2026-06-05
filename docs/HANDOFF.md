@@ -175,6 +175,10 @@ An experimental static APT repository helper is also present. It builds
 `InRelease` plus `Release.gpg`. The package install smoke helper can now
 configure a temporary APT source with `--apt-repo` and validate installation
 through that repository; a fresh-host run of that path is still pending.
+For disposable Debian/Ubuntu validation hosts, `./test.sh --yes` now bootstraps
+apt dependencies, ensures the pinned Go toolchain, runs release/smoke/stress
+checks, and validates direct `.deb` plus local APT repository installation in
+one command.
 
 The current handoff target is a production/distribution-grade release. The
 approximate readiness is:

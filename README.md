@@ -94,6 +94,15 @@ For the non-root local release gate used before publishing or packaging, run:
 scripts/release-check.sh
 ```
 
+On a fresh disposable Debian/Ubuntu validation host, bootstrap dependencies and
+run the full validation path with:
+
+```sh
+./test.sh --yes
+```
+
+Use `./test.sh --quick --yes` for a shorter first pass.
+
 To build a version-stamped release tarball for the current Linux architecture:
 
 ```sh

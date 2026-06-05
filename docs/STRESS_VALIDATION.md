@@ -67,6 +67,12 @@ Run passive stress under normal host activity:
 scripts/systemd-stress.sh --duration 30m --stats-interval 1m --yes
 ```
 
+On a fresh Debian/Ubuntu validation host, `./test.sh --yes` can bootstrap
+dependencies, install the pinned Go toolchain under the current user if needed,
+run release checks, run smoke/stress, and validate direct `.deb` plus local APT
+repository package installation. Use `./test.sh --quick --yes` for a shorter
+first pass before spending a full 30 minutes on stress.
+
 ## Container Host Workload
 
 On a host with Docker or Podman, run the normal host stress helper first, then

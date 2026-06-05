@@ -142,12 +142,14 @@ run go version
 run git diff --check
 run git diff --cached --check
 run bash -n \
+	test.sh \
 	scripts/dependency-review.sh \
 	scripts/release-check.sh \
 	scripts/build-release.sh \
 	scripts/build-deb.sh \
 	scripts/build-rpm.sh \
 	scripts/build-apt-repo.sh \
+	scripts/fresh-host-test.sh \
 	scripts/release-bundle.sh \
 	scripts/release-manifest.sh \
 	scripts/package-install-smoke.sh \
