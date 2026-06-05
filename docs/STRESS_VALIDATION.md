@@ -127,16 +127,19 @@ sudo /var/lib/tracejutsu-stress-.../tracejutsu-stress \
   > rg-container-metadata-sample.log
 ```
 
-After transient smoke/stress pass on a fresh Debian or Ubuntu target, validate
-the actual Debian package lifecycle:
+After transient smoke/stress pass on a fresh Debian or Ubuntu target, copy the
+release `.deb` and matching `.deb.sha256` to the host, then validate the actual
+Debian package lifecycle:
 
 ```sh
-scripts/package-install-smoke.sh --duration 10m --yes
+scripts/package-install-smoke.sh --deb dist/tracejutsu_0.1.0_amd64.deb --duration 10m --yes
 ```
 
 Run package lifecycle validation inside `tmux` or another persistent session on
 SSH hosts. The helper attempts cleanup on exit, termination, and hangup, but a
 persistent session makes the resulting log and package state easier to audit.
+Omit `--deb` only when intentionally testing a helper-built temporary package
+instead of the release artifact.
 
 Save logs when comparing hosts:
 

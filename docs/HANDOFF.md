@@ -410,8 +410,13 @@ go run ./cmd/tracejutsu show --db "$DB" inc-evt-001
    published `SHA256SUMS` plus `SHA256SUMS.asc` on a clean machine.
 6. Keep `validation-artifacts/debian-13-docker-container-host.tar.gz` as the
    container-host evidence bundle for release notes.
-7. Re-run package lifecycle smoke on any release target whose full log was not
-   preserved after the journal timestamp compatibility fix.
+7. Re-run package lifecycle smoke against the actual release `.deb` on any
+   release target whose full log was not preserved after the journal timestamp
+   compatibility fix:
+
+   ```sh
+   scripts/package-install-smoke.sh --deb dist/tracejutsu_0.1.0_amd64.deb --duration 10m --yes
+   ```
 8. Start `.rpm` or broader package-format work only after evidence bundles are
    saved and any required stricter-host pass has zero required drops.
 

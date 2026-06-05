@@ -66,14 +66,16 @@ On a fresh Debian/Ubuntu validation host, test the full package lifecycle before
 using the package on a personal machine or production host:
 
 ```sh
-scripts/package-install-smoke.sh --duration 2m --yes
+scripts/package-install-smoke.sh --deb dist/tracejutsu_0.1.0_amd64.deb --duration 2m --yes
 ```
 
 The package smoke helper refuses existing Tracejutsu installs by default,
-installs a temporary package, verifies that the service was not auto-started or
-enabled, starts the packaged service, validates final drop counters, stops the
-service, removes the package, and leaves `/var/lib/tracejutsu` for
-inspection unless `--purge-state` is supplied. Run it inside `tmux` or another
+verifies the supplied package metadata and checksum when a sibling `.sha256`
+file is present, verifies that the service was not auto-started or enabled,
+starts the packaged service, validates final drop counters, stops the service,
+removes the package, and leaves `/var/lib/tracejutsu` for inspection unless
+`--purge-state` is supplied. Omit `--deb` only when you intentionally want the
+helper to build and test a temporary package. Run it inside `tmux` or another
 persistent session on SSH hosts so a client disconnect does not interrupt the
 package cleanup path.
 

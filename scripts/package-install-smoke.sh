@@ -3,21 +3,25 @@ set -euo pipefail
 
 usage() {
 	cat <<'EOF'
-Usage: scripts/package-install-smoke.sh [--duration 2m] [--version VERSION] [--allow-existing-state] [--keep-installed] [--purge-state] [--yes]
+Usage: scripts/package-install-smoke.sh [--deb PATH] [--duration 2m] [--version VERSION] [--allow-existing-state] [--keep-installed] [--purge-state] [--yes]
 
-Builds a temporary Debian package, installs it, verifies that the package does
-not enable or start tracejutsu.service automatically, starts the packaged
-service briefly, validates the final runtime drop counters, stops the service,
-and removes the package again.
+Builds a temporary Debian package, or uses an existing package supplied with
+--deb, installs it, verifies that the package does not enable or start
+tracejutsu.service automatically, starts the packaged service briefly, validates
+the final runtime drop counters, stops the service, and removes the package
+again.
 
 This helper is intended for disposable or fresh Debian/Ubuntu validation hosts.
 It refuses to run when a Tracejutsu package, service unit, binary, or state
 directory already exists unless the relevant override is supplied.
 
 Options:
+  --deb PATH                 Install and validate an existing tracejutsu .deb
+                             instead of building a temporary package.
   --duration DURATION        How long to run the installed service. Default: 2m.
   --version VERSION          Package version to build. Default is a unique
-                             0.0.0+install.smoke.TIMESTAMP.PID value.
+                             0.0.0+install.smoke.TIMESTAMP.PID value. With
+                             --deb, verifies the package version if supplied.
   --allow-existing-state     Allow an existing /var/lib/tracejutsu directory.
   --keep-installed           Leave the package installed after validation.
   --purge-state              Remove /var/lib/tracejutsu after validation.
@@ -28,13 +32,23 @@ EOF
 
 duration=2m
 version=""
+deb_path_input=""
 allow_existing_state=0
 keep_installed=0
 purge_state=0
 assume_yes=0
+invoke_cwd="$(pwd)"
 
 while [[ $# -gt 0 ]]; do
 	case "$1" in
+	--deb)
+		if [[ $# -lt 2 ]]; then
+			echo "--deb requires a value" >&2
+			exit 2
+		fi
+		deb_path_input=$2
+		shift 2
+		;;
 	--duration)
 		if [[ $# -lt 2 ]]; then
 			echo "--duration requires a value" >&2
@@ -90,6 +104,81 @@ tracejutsu_package_installed() {
 	local status
 	status="$(dpkg-query -W -f='${db:Status-Abbrev}' tracejutsu 2>/dev/null || true)"
 	[[ "$status" == ii* ]]
+}
+
+absolute_existing_file() {
+	local path=$1
+	local dir
+	local base
+	if [[ "$path" != /* ]]; then
+		path="$invoke_cwd/$path"
+	fi
+	if [[ ! -f "$path" || ! -r "$path" ]]; then
+		echo "file is not readable: $path" >&2
+		exit 1
+	fi
+	dir="$(cd "$(dirname "$path")" && pwd)"
+	base="$(basename "$path")"
+	printf '%s/%s\n' "$dir" "$base"
+}
+
+deb_field() {
+	local deb=$1
+	local field=$2
+	local value
+	value="$(dpkg-deb --field "$deb" "$field")" || {
+		echo "failed to read Debian package field $field from $deb" >&2
+		exit 1
+	}
+	if [[ -z "$value" ]]; then
+		echo "Debian package field $field is empty in $deb" >&2
+		exit 1
+	fi
+	printf '%s\n' "$value"
+}
+
+verify_tracejutsu_deb_metadata() {
+	local deb=$1
+	local package_name
+	local package_version
+	local package_arch
+	local host_arch
+	package_name="$(deb_field "$deb" Package)"
+	package_version="$(deb_field "$deb" Version)"
+	package_arch="$(deb_field "$deb" Architecture)"
+	host_arch="$(dpkg --print-architecture)"
+
+	if [[ "$package_name" != tracejutsu ]]; then
+		echo "Debian package name is $package_name, expected tracejutsu" >&2
+		exit 1
+	fi
+	if [[ "$package_arch" != "$host_arch" && "$package_arch" != all ]]; then
+		echo "Debian package architecture is $package_arch, host architecture is $host_arch" >&2
+		exit 1
+	fi
+	if [[ -n "$version" && "$package_version" != "$version" && "$package_version" != "${version#v}" ]]; then
+		echo "Debian package version is $package_version, expected $version" >&2
+		exit 1
+	fi
+	if [[ -z "$version" ]]; then
+		version="$package_version"
+	fi
+
+	deb_package_version="$package_version"
+	deb_package_arch="$package_arch"
+}
+
+verify_deb_checksum_if_present() {
+	local deb=$1
+	local checksum_file="$deb.sha256"
+	if [[ -r "$checksum_file" ]]; then
+		(
+			cd "$(dirname "$deb")"
+			sha256sum -c "$(basename "$checksum_file")"
+		)
+	else
+		echo "checksum file not found for $deb; skipping checksum verification" >&2
+	fi
 }
 
 journal_since_timestamp() {
@@ -179,6 +268,7 @@ cleanup() {
 require_command bash
 require_command date
 require_command dpkg
+require_command dpkg-deb
 require_command dpkg-query
 require_command find
 require_command flock
@@ -209,7 +299,15 @@ fi
 
 run_id="$(date +%Y%m%d%H%M%S)-$$"
 state_dir=/var/lib/tracejutsu
-if [[ -z "$version" ]]; then
+use_existing_deb=0
+deb_path=""
+deb_package_version=""
+deb_package_arch=""
+if [[ -n "$deb_path_input" ]]; then
+	use_existing_deb=1
+	deb_path="$(absolute_existing_file "$deb_path_input")"
+	verify_tracejutsu_deb_metadata "$deb_path"
+elif [[ -z "$version" ]]; then
 	version="0.0.0+install.smoke.$(date +%Y%m%d%H%M%S).$$"
 fi
 
@@ -224,7 +322,19 @@ cat <<EOF
 Tracejutsu package install smoke test
 
 Will:
+EOF
+if [[ "$use_existing_deb" -eq 1 ]]; then
+	cat <<EOF
+  - use Debian package: $deb_path
+  - package version: $deb_package_version
+  - package architecture: $deb_package_arch
+EOF
+else
+	cat <<EOF
   - build a temporary Debian package version: $version
+EOF
+fi
+cat <<EOF
   - install package: tracejutsu
   - verify the package does not auto-enable or auto-start the service
   - start packaged service: tracejutsu.service
@@ -264,16 +374,18 @@ trap cleanup EXIT INT TERM HUP
 tmp_dir="$(mktemp -d /tmp/tracejutsu-package-install.XXXXXX)"
 deb_out="$tmp_dir/deb"
 
-scripts/build-deb.sh --version "$version" --out "$deb_out"
-deb_path="$(find "$deb_out" -maxdepth 1 -type f -name 'tracejutsu_*.deb' -print -quit)"
-if [[ -z "$deb_path" ]]; then
-	echo "built package not found in $deb_out" >&2
-	exit 1
+if [[ "$use_existing_deb" -eq 1 ]]; then
+	verify_deb_checksum_if_present "$deb_path"
+else
+	scripts/build-deb.sh --version "$version" --out "$deb_out"
+	deb_path="$(find "$deb_out" -maxdepth 1 -type f -name 'tracejutsu_*.deb' -print -quit)"
+	if [[ -z "$deb_path" ]]; then
+		echo "built package not found in $deb_out" >&2
+		exit 1
+	fi
+	verify_tracejutsu_deb_metadata "$deb_path"
+	verify_deb_checksum_if_present "$deb_path"
 fi
-(
-	cd "$(dirname "$deb_path")"
-	sha256sum -c "$(basename "$deb_path").sha256"
-)
 
 echo
 echo "===== installing package ====="
@@ -283,8 +395,20 @@ sudo systemctl daemon-reload
 
 echo
 echo "===== installed binary ====="
-/usr/bin/tracejutsu version
-/usr/bin/tracejutsu version | grep -F "tracejutsu $version" >/dev/null
+installed_version_output="$(/usr/bin/tracejutsu version)"
+printf '%s\n' "$installed_version_output"
+expected_version_line="tracejutsu $version"
+alternate_version_line=""
+if [[ "$version" == v* ]]; then
+	alternate_version_line="tracejutsu ${version#v}"
+else
+	alternate_version_line="tracejutsu v$version"
+fi
+if ! printf '%s\n' "$installed_version_output" | grep -F "$expected_version_line" >/dev/null &&
+	! printf '%s\n' "$installed_version_output" | grep -F "$alternate_version_line" >/dev/null; then
+	echo "installed binary version did not match package version $version" >&2
+	exit 1
+fi
 systemctl cat tracejutsu.service | grep -F "ExecStart=/usr/bin/tracejutsu" >/dev/null
 
 if sudo systemctl is-active --quiet tracejutsu.service; then

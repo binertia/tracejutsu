@@ -109,10 +109,11 @@ scripts/build-deb.sh --version v0.1.0 --maintainer "Your Name <you@example.com>"
 Set `SOURCE_DATE_EPOCH` to a Unix timestamp when repeatable release metadata
 and archive/package timestamps are required.
 
-On a fresh Debian/Ubuntu validation host, run the installed package smoke test:
+On a fresh Debian/Ubuntu validation host, run the installed package smoke test
+against the release `.deb`:
 
 ```sh
-scripts/package-install-smoke.sh --duration 2m --yes
+scripts/package-install-smoke.sh --deb dist/tracejutsu_0.1.0_amd64.deb --duration 2m --yes
 ```
 
 To generate and optionally sign a release checksum manifest:
