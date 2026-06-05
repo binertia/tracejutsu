@@ -110,12 +110,25 @@ event-persistence, and incident-persistence drops. The stress run consumed
 `dist/tracejutsu_0.1.0_amd64.deb` then completed package lifecycle smoke,
 processed 57 normalized events, grouped and analyzed 44 candidates, removed the
 package cleanly, and ended with zero required drops.
+A follow-up Debian 12 release package smoke on the same host with
+`--keep-installed` also passed after purging old package config and state. The
+helper verified `tracejutsu_0.1.0_amd64.deb: OK`, processed 99 normalized
+events, grouped and analyzed 43 candidates, removed no package by request, and
+ended with zero ring-buffer, syscall-correlation, event-persistence, and
+incident-persistence drops. After manually starting the installed service, the
+operations validation helper passed on the same host: `tracejutsu.service` was
+active, the package was not enabled for boot, `/var/lib/tracejutsu` was `0700`,
+`tracejutsu.db` was `0600`, SQLite reported `journal_mode: wal`, `db-stats`
+reported 142 stored events and 0 incidents, recent runtime stats were present
+with zero required drops, and the online SQLite backup integrity check returned
+`ok` for `/var/backups/tracejutsu/tracejutsu-20260605T130057Z.db`.
 Native arm64 support has compile coverage and a separate experimental VPS
 runbook in [`ARM_TEST.md`](ARM_TEST.md). Real arm64 smoke/stress validation is
 not blocking the next amd64 hardening task.
 
 Recent signed production-hardening commits after `origin/main`:
 
+- `f7ad5a3` records the Debian 12 keep-installed release package smoke pass.
 - `685e1fa` adds installed-service operations validation for db-stats, WAL
   mode, runtime stats, and online SQLite backup checks.
 - `85c787e` adds a fresh-host RPM install smoke helper.
@@ -158,9 +171,9 @@ The current handoff target is a production/distribution-grade release. The
 approximate readiness is:
 
 - MVP feature surface: **100% complete**.
-- Personal Debian amd64 install readiness: **95-97% complete**.
-- Debian/Ubuntu amd64 production release: **89-93% complete**.
-- Broad production/distribution-grade release: **78-83% complete**.
+- Personal Debian amd64 install readiness: **96-98% complete**.
+- Debian/Ubuntu amd64 production release: **90-94% complete**.
+- Broad production/distribution-grade release: **79-84% complete**.
 - Multi-distro amd64 plus production arm64 release: **65-70% complete**.
 
 The remaining percentage is mostly release engineering and validation, not core
@@ -186,9 +199,9 @@ Before calling this distribution-grade, finish these tracks:
   the combined checksum manifest.
 - Expand local release automation if publishing packages requires multiple
   architectures or package formats.
-- Validate `scripts/ops-validation.sh --yes` under an installed service on each
-  release target. Run package smoke with `--keep-installed` first when using a
-  disposable validation host.
+- Repeat `scripts/ops-validation.sh --yes` under an installed service on any
+  additional release target that needs its own operations evidence. Debian 12
+  Bookworm has passed this check.
 - Decide the release claim for arm64. Keep it experimental unless a native
   arm64 host completes the smoke/stress runbook in [`ARM_TEST.md`](ARM_TEST.md).
 - Review `scripts/dependency-review.sh --out dist/dependency-review.md` output
