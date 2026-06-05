@@ -67,6 +67,55 @@ Run passive stress under normal host activity:
 scripts/systemd-stress.sh --duration 30m --stats-interval 1m --yes
 ```
 
+## Container Host Workload
+
+On a host with Docker or Podman, run the normal host stress helper first, then
+run a short unprivileged container workload in a second terminal or tmux pane.
+The workload does not mount host paths, does not use host networking, drops all
+container capabilities, and does not intentionally connect to external
+networks. It emits exec, file-write, chmod, and local loopback connect attempts
+from inside the container.
+
+The helper does not pull images by default. Pull the image explicitly first, or
+opt in with `--pull missing` if network image pulls are acceptable on the test
+host:
+
+```sh
+docker pull alpine:3.20
+# or:
+podman pull alpine:3.20
+```
+
+Run the stress helper:
+
+```sh
+scripts/systemd-stress.sh --duration 30m --stats-interval 1m --yes \
+  2>&1 | tee rg-systemd-stress-container.log
+```
+
+While stress is running, start the container workload:
+
+```sh
+scripts/container-workload.sh --duration 10m --pull never --yes \
+  2>&1 | tee rg-container-workload.log
+```
+
+After stress exits, confirm the final validation summary passes and inspect the
+stress database for stored events with non-empty container metadata:
+
+```sh
+sudo /var/lib/runtime-guard-stress-.../runtime-guard-stress \
+  events \
+  --db /var/lib/runtime-guard-stress-.../runtime-guard.db \
+  --limit 100000 |
+  grep -E '"container_id":"[^"]+"'
+```
+
+For a container-host pass, the stress helper must meet the normal zero-drop
+criteria and at least one stored event from the workload should include a
+non-empty `container_id`. `container_name` is best-effort and may be a container
+hostname rather than the runtime display name.
+
 After transient smoke/stress pass on a fresh Debian or Ubuntu target, validate
 the actual Debian package lifecycle:
 

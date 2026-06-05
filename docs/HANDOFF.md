@@ -109,7 +109,10 @@ Recent signed production-hardening commits after `origin/main`:
   nonzero validation drop counters.
 The release helpers now cover fresh-host package lifecycle validation, combined
 checksum manifest generation, optional armored detached GPG signing, and
-configurable Debian maintainer metadata.
+configurable Debian maintainer metadata. A container-host workload helper is
+also present for the next validation target; it runs an unprivileged Docker or
+Podman container without host mounts or host networking while the normal systemd
+stress helper observes the host.
 
 The current handoff target is a production/distribution-grade release. The
 approximate readiness is:
@@ -131,7 +134,9 @@ Before calling this distribution-grade, finish these tracks:
   Bookworm, Ubuntu 22.04, and Ubuntu 24.04, including host fingerprint, release
   gate, root smoke, systemd smoke/stress, and package smoke outputs. Use
   `scripts/validation-bundle.sh` to package each host's evidence with checksums.
-- Validate one container-host or stricter kernel/procfs environment.
+- Validate one container-host or stricter kernel/procfs environment. Use
+  `scripts/container-workload.sh` alongside `scripts/systemd-stress.sh` on
+  Docker or Podman hosts.
 - Extend release artifacts beyond the initial tarball and Debian package
   builders if `.rpm` is required. The current builders honor
   `SOURCE_DATE_EPOCH` for repeatable build metadata and archive/package
@@ -390,7 +395,10 @@ go run ./cmd/runtime-guard show --db "$DB" inc-evt-001
    notes. Prioritize the fresh Ubuntu 22.04 busier pass because it already
    covers smoke, stress, and package lifecycle with zero required drops.
 6. Validate one container host or stricter kernel/procfs environment, then save
-   and summarize the full helper output.
+   and summarize the full helper output. For Docker or Podman hosts, run
+   `scripts/container-workload.sh --duration 10m --pull never --yes` while
+   `scripts/systemd-stress.sh --duration 30m --stats-interval 1m --yes` is
+   active.
 7. Re-run package lifecycle smoke on any release target whose full log was not
    preserved after the journal timestamp compatibility fix.
 8. Start `.rpm` or broader package-format work only after evidence bundles are

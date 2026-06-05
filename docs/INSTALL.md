@@ -239,6 +239,12 @@ host load:
 scripts/systemd-stress.sh --duration 30m --stats-interval 1m
 ```
 
+On Docker or Podman hosts, run `scripts/container-workload.sh` in a second
+terminal while the stress helper is active to validate container metadata and
+namespace behavior before claiming that host class as supported. See
+[`STRESS_VALIDATION.md`](STRESS_VALIDATION.md) for the full container-host
+workflow.
+
 The stress helper uses the same sandbox and tuned buffer settings as the
 packaged service unless `--capabilities` is supplied for least-privilege
 validation. It does not install the service or generate artificial load.
