@@ -100,7 +100,6 @@ Recent signed production-hardening commits after `origin/main`:
 - `d05ef5e` adds database operations stats.
 - `6ecf2ff` adds the dependency/license review gate.
 - `0e65696` adds versioned release artifact builds.
-- `7b64d56` adds the CI release gate.
 - `7d7e3cd` documents the separate arm64 VPS validation experiment.
 - `43f081c` adds the multi-host stress validation workflow.
 - `b0688ac` checks sudo access before building systemd test artifacts.
@@ -142,8 +141,8 @@ Before calling this distribution-grade, finish these tracks:
   `SOURCE_DATE_EPOCH` for repeatable build metadata and archive/package
   timestamps, and `scripts/release-manifest.sh --sign` can produce a detached
   signature for the combined checksum manifest.
-- Expand release automation beyond the initial CI gate if publishing packages
-  requires multiple architectures or package formats.
+- Expand local release automation if publishing packages requires multiple
+  architectures or package formats.
 - Validate the operational policy in [`OPERATIONS.md`](OPERATIONS.md) under an
   installed service on each release target.
 - Decide the release claim for arm64. Keep it experimental unless a native

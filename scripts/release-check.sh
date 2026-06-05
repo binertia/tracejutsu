@@ -118,12 +118,13 @@ run go vet ./...
 run go test -race ./...
 run go test -tags=ebpf_smoke ./internal/ebpf -run '^$'
 release_dir="$artifact_check_dir/release"
-run scripts/build-release.sh --version 0.0.0-ci --out "$release_dir"
-verify_tar_artifact "$release_dir" 0.0.0-ci
+check_version=0.0.0-check
+run scripts/build-release.sh --version "$check_version" --out "$release_dir"
+verify_tar_artifact "$release_dir" "$check_version"
 if command -v dpkg-deb >/dev/null 2>&1; then
-	ci_maintainer="Runtime Guard CI <ci@example.invalid>"
-	run scripts/build-deb.sh --version 0.0.0-ci --out "$release_dir" --maintainer "$ci_maintainer"
-	verify_deb_artifact "$release_dir" 0.0.0-ci "$ci_maintainer"
+	check_maintainer="Runtime Guard Check <check@example.invalid>"
+	run scripts/build-deb.sh --version "$check_version" --out "$release_dir" --maintainer "$check_maintainer"
+	verify_deb_artifact "$release_dir" "$check_version" "$check_maintainer"
 else
 	echo
 	echo "===== Debian package build skipped: dpkg-deb unavailable ====="
