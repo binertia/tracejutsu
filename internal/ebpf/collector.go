@@ -18,10 +18,18 @@ const (
 )
 
 const (
-	CollectorExecve    = "execve"
-	CollectorConnect   = "connect"
-	CollectorFileWrite = "file_write"
-	CollectorChmod     = "chmod"
+	CollectorExecve          = "execve"
+	CollectorConnect         = "connect"
+	CollectorFileWrite       = "file_write"
+	CollectorChmod           = "chmod"
+	CollectorSensitiveRead   = "sensitive_read"
+	CollectorFileLifecycle   = "file_lifecycle"
+	CollectorPrivilegeChange = "privilege_change"
+	CollectorNamespaceChange = "namespace_change"
+	CollectorProcessAccess   = "process_access"
+	CollectorNetworkServer   = "network_server"
+	CollectorKernelTamper    = "kernel_tamper"
+	CollectorBehaviorCore    = "behavior_core"
 )
 
 type Collector interface {
@@ -65,10 +73,29 @@ func DefaultCollectorNames() []string {
 	return []string{CollectorExecve, CollectorConnect, CollectorFileWrite, CollectorChmod}
 }
 
+func BehaviorCoreCollectorNames() []string {
+	return []string{
+		CollectorExecve,
+		CollectorConnect,
+		CollectorFileWrite,
+		CollectorChmod,
+		CollectorSensitiveRead,
+		CollectorFileLifecycle,
+		CollectorPrivilegeChange,
+		CollectorNamespaceChange,
+		CollectorProcessAccess,
+		CollectorNetworkServer,
+		CollectorKernelTamper,
+	}
+}
+
 func ParseCollectorNames(input string) ([]string, error) {
 	input = strings.TrimSpace(input)
 	if input == "" || strings.EqualFold(input, "all") {
 		return DefaultCollectorNames(), nil
+	}
+	if strings.EqualFold(input, CollectorBehaviorCore) {
+		return BehaviorCoreCollectorNames(), nil
 	}
 
 	pieces := strings.Split(input, ",")
@@ -80,6 +107,9 @@ func ParseCollectorNames(input string) ([]string, error) {
 		}
 		if name == "all" {
 			return nil, errors.New(`collector "all" must be used by itself`)
+		}
+		if name == CollectorBehaviorCore {
+			return nil, errors.New(`collector "behavior_core" must be used by itself`)
 		}
 		names = append(names, name)
 	}
@@ -184,12 +214,22 @@ func checkedCollectorNames(names []string) ([]string, error) {
 	if len(names) == 1 && strings.EqualFold(strings.TrimSpace(names[0]), "all") {
 		return DefaultCollectorNames(), nil
 	}
+	if len(names) == 1 && strings.EqualFold(strings.TrimSpace(names[0]), CollectorBehaviorCore) {
+		return BehaviorCoreCollectorNames(), nil
+	}
 
 	valid := map[string]struct{}{
-		CollectorExecve:    {},
-		CollectorConnect:   {},
-		CollectorFileWrite: {},
-		CollectorChmod:     {},
+		CollectorExecve:          {},
+		CollectorConnect:         {},
+		CollectorFileWrite:       {},
+		CollectorChmod:           {},
+		CollectorSensitiveRead:   {},
+		CollectorFileLifecycle:   {},
+		CollectorPrivilegeChange: {},
+		CollectorNamespaceChange: {},
+		CollectorProcessAccess:   {},
+		CollectorNetworkServer:   {},
+		CollectorKernelTamper:    {},
 	}
 	seen := make(map[string]struct{}, len(names))
 	checked := make([]string, 0, len(names))
@@ -201,8 +241,12 @@ func checkedCollectorNames(names []string) ([]string, error) {
 		if name == "all" {
 			return nil, errors.New(`collector "all" must be used by itself`)
 		}
+		if name == CollectorBehaviorCore {
+			return nil, errors.New(`collector "behavior_core" must be used by itself`)
+		}
 		if _, ok := valid[name]; !ok {
-			return nil, fmt.Errorf("unknown collector %q (valid: all,%s)", name, strings.Join(DefaultCollectorNames(), ","))
+			validNames := append([]string{CollectorBehaviorCore}, BehaviorCoreCollectorNames()...)
+			return nil, fmt.Errorf("unknown collector %q (valid: all,%s)", name, strings.Join(validNames, ","))
 		}
 		if _, ok := seen[name]; ok {
 			return nil, fmt.Errorf("duplicate collector %q", name)

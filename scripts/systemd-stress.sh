@@ -3,7 +3,7 @@ set -euo pipefail
 
 usage() {
 	cat <<'EOF'
-Usage: scripts/systemd-stress.sh [--duration 30m] [--stats-interval 1m] [--collectors all] [--file-write-min-bytes 0] [--capabilities "CAP_BPF CAP_PERFMON ..."] [--yes]
+Usage: scripts/systemd-stress.sh [--duration 30m] [--stats-interval 1m] [--collectors all|behavior_core|LIST] [--file-write-min-bytes 0] [--capabilities "CAP_BPF CAP_PERFMON ..."] [--yes]
 
 Builds a temporary tracejutsu binary and runs it under a transient systemd
 unit using the packaged service sandbox and tuned buffer settings. This is a
@@ -13,7 +13,7 @@ replace, enable, or stop the real tracejutsu.service.
 Options:
   --duration DURATION        How long to run the transient service. Default: 30m.
   --stats-interval DURATION  Runtime stats print interval. Default: 1m.
-  --collectors LIST          Comma-separated collectors: all, execve, connect, file_write, chmod.
+  --collectors LIST          Comma-separated collectors, all, or behavior_core.
                              Default: all.
   --file-write-min-bytes N   Minimum successful bytes for file_write events.
                              Default: 0, which captures all completed writes.

@@ -177,7 +177,7 @@ func runLive(args []string, out io.Writer) (err error) {
 	persistBuffer := flags.Int("persist-buffer", persistqueue.DefaultCapacity, "async event persistence queue capacity")
 	persistBatchSize := flags.Int("persist-batch-size", persistqueue.DefaultBatchSize, "maximum normalized events per async persistence transaction")
 	ringBufferSize := flags.Int("ring-buffer-size", sensor.DefaultRingBufferSize, "per-collector eBPF ring buffer size in bytes; must be a power of two")
-	collectorNames := flags.String("collectors", strings.Join(sensor.DefaultCollectorNames(), ","), "comma-separated collectors to enable: all, execve, connect, file_write, chmod")
+	collectorNames := flags.String("collectors", strings.Join(sensor.DefaultCollectorNames(), ","), "comma-separated collectors to enable: all, behavior_core, execve, connect, file_write, chmod, sensitive_read, file_lifecycle, privilege_change, namespace_change, process_access, network_server, kernel_tamper")
 	fileWriteMinBytes := flags.Int64("file-write-min-bytes", 0, "minimum successful bytes for file_write events; 0 captures all completed writes")
 	quietEvents := flags.Bool("quiet-events", false, "suppress per-event JSON output")
 	if err := flags.Parse(args); err != nil || len(flags.Args()) != 0 {

@@ -179,14 +179,15 @@ For disposable Debian/Ubuntu validation hosts, `./test.sh --yes` now bootstraps
 apt dependencies, ensures the pinned Go toolchain, runs release/smoke/stress
 checks, and validates direct `.deb` plus local APT repository installation in
 one command.
-On 2026-06-06, the full local non-root release gate passed again on `dev` at
-`b33b2c769cc1`. It covered shell syntax checks, `go test ./...`, `go vet
+On 2026-06-06, after the behavior-core syscall collectors and smoke coverage
+were added, the full local non-root release gate passed again on `dev` at
+`a076183828c8`. It covered shell syntax checks, `go test ./...`, `go vet
 ./...`, `go test -race ./...`, eBPF smoke compile coverage, tarball, Debian
 package, APT repository metadata, release-bundle, manifest verification,
 `govulncheck` with no vulnerabilities, and dependency review. A fresh unsigned
-`v0.1.0` release bundle was built in `dist/v0.1.0` with maintainer
+`v0.1.0` release bundle was rebuilt in `dist/v0.1.0` with maintainer
 `binertia <bat@binertia.cc>`. The bundled binary reports `tracejutsu v0.1.0`,
-commit `b33b2c769cc1`, build date `2026-06-05T16:22:29Z`; the Debian package
+commit `a076183828c8`, build date `2026-06-06T04:48:15Z`; the Debian package
 metadata reports version `0.1.0`, architecture `amd64`, and the same
 maintainer. `dist/v0.1.0/SHA256SUMS` verifies and includes
 `dependency-review.md`, which reports 34 modules and zero missing top-level
@@ -217,6 +218,10 @@ Before calling this distribution-grade, finish these tracks:
   capability fallback beyond the packaged narrow set. Docker/containerd host
   metadata capture is already validated on Debian 13 with
   `scripts/container-workload.sh`.
+- Run the expanded root-only eBPF smoke suite on a privileged BPF-capable host
+  to live-validate the opt-in behavior-core collectors. The smoke tests compile
+  locally, but only the original default collectors have historical privileged
+  smoke results.
 - Validate the experimental RPM builder and `scripts/rpm-install-smoke.sh` on a
   Fedora/RHEL-compatible host if RPM distribution is required. The current
   tarball, Debian package, and RPM builders honor `SOURCE_DATE_EPOCH` for build
@@ -239,9 +244,9 @@ Before calling this distribution-grade, finish these tracks:
   files.
 - Sign and verify `dist/v0.1.0/SHA256SUMS` with
   `scripts/release-manifest.sh --dir dist/v0.1.0 --sign` once GPG keyring
-  access is explicitly approved. Older root-level `dist/` artifacts were built
-  before `b33b2c769cc1`; prefer the fresh `dist/v0.1.0` bundle unless those
-  root-level artifacts are intentionally regenerated.
+  access is explicitly approved. Prefer the fresh `dist/v0.1.0` bundle built at
+  `a076183828c8`; older root-level `dist/` artifacts should be ignored unless
+  they are intentionally regenerated.
 
 ## Implemented MVP Surface
 
@@ -258,7 +263,7 @@ eBPF raw tracepoints
   -> terminal report
 ```
 
-Implemented live Linux amd64/native-arm64 collectors:
+Implemented default live Linux amd64/native-arm64 collectors:
 
 - `execve`
 - IPv4 and IPv6 `connect`
@@ -266,6 +271,21 @@ Implemented live Linux amd64/native-arm64 collectors:
 - `chmod`, `fchmod`, `fchmodat`, and `fchmodat2` where exposed by the target
   syscall ABI. On arm64, direct `chmod` libc calls are captured through
   `fchmodat`/`fchmodat2`.
+
+Implemented opt-in behavior-core collectors for attacker-chain explanation:
+
+- `sensitive_read` from readable `open`, `openat`, and `openat2` attempts
+  against sensitive credential/config paths
+- `file_lifecycle` from rename, unlink, mkdir, symlink, link, truncate, and
+  ftruncate families
+- `privilege_change` from UID/GID, groups, capability, and selected `prctl`
+  calls
+- `namespace_change` from `setns`, `unshare`, `mount`, `umount2`,
+  `pivot_root`, and `chroot`
+- `process_access` from `ptrace`, `process_vm_readv`, and
+  `process_vm_writev`
+- `network_server` from IPv4/IPv6 `bind` and `listen`
+- `kernel_tamper` from `bpf`, module load/unload, and `kexec_load`
 
 Connect, file write, and chmod probes correlate syscall entry and exit with
 bounded in-kernel maps. Emitted records include the syscall return value and
@@ -286,6 +306,14 @@ Implemented deterministic rules:
 - `sensitive_file_access`
 - `crypto_miner_process_name`
 - `unexpected_network_tool_execution`
+- `sensitive_file_read`
+- `persistence_path_modified`
+- `log_tampering`
+- `privilege_change_after_suspicious_activity`
+- `namespace_escape_attempt`
+- `process_memory_access`
+- `unexpected_network_listener`
+- `kernel_tamper_syscall`
 
 ## Important Boundaries
 
@@ -330,12 +358,15 @@ Implemented deterministic rules:
 - `tracejutsu run --event-buffer`, `--persist-buffer`,
   `--persist-batch-size`, and `--ring-buffer-size` tune burst capacity.
   `--collectors` narrows live collection to a comma-separated subset of
-  `execve`, `connect`, `file_write`, and `chmod` for stress isolation or
-  targeted deployments. `--file-write-min-bytes` can apply a kernel-side byte
-  floor to file-write events before they enter the ring buffer. The packaged
-  service uses 16384 event and persistence queue slots, 512 events per
-  persistence transaction, 8 MiB per collector ring buffer, all collectors, and
-  no file-write byte floor by default.
+  collector names for stress isolation or targeted deployments. `all` remains
+  the default four-collector set, while `behavior_core` explicitly opts in to
+  the default collectors plus sensitive-read, lifecycle, privilege, namespace,
+  process-access, network-server, and kernel-tamper categories.
+  `--file-write-min-bytes` can apply a kernel-side byte floor to file-write
+  events before they enter the ring buffer. The packaged service uses 16384
+  event and persistence queue slots, 512 events per persistence transaction,
+  8 MiB per collector ring buffer, all default collectors, and no file-write
+  byte floor by default.
 - Live runs exclude the tracejutsu process PID from file-write capture at
   the eBPF entry point. This prevents SQLite persistence writes from feeding
   back into the file-write collector and saturating the ring buffer.
@@ -473,7 +504,7 @@ go run ./cmd/tracejutsu show --db "$DB" inc-evt-001
 
 1. Push or otherwise back up the latest signed commits after checking
    `git status --short --branch`. If any source or release-script changes land
-   after `b33b2c769cc1`, re-run the local release gate and rebuild the bundle.
+   after `a076183828c8`, re-run the local release gate and rebuild the bundle.
 2. Sign the fresh current-head release bundle manifest after explicitly
    approving GPG keyring access:
 

@@ -29,6 +29,14 @@ func RuleIDs() []string {
 		"sensitive_file_access",
 		"crypto_miner_process_name",
 		"unexpected_network_tool_execution",
+		"sensitive_file_read",
+		"persistence_path_modified",
+		"log_tampering",
+		"privilege_change_after_suspicious_activity",
+		"namespace_escape_attempt",
+		"process_memory_access",
+		"unexpected_network_listener",
+		"kernel_tamper_syscall",
 	}
 }
 
@@ -44,14 +52,24 @@ func (Basic) Analyze(normalizedEvents []events.Event) Result {
 	downloadedFiles := make(map[string][]events.Event)
 	downloadedProcessPIDs := make(map[int]downloadedArtifact)
 	shellProcesses := make(map[int]events.Event)
+	suspiciousProcessPIDs := make(map[int]bool)
 	sensitiveFiles := make(map[string]bool)
 	reverseShellConnections := make(map[string]bool)
+	sensitiveReads := make(map[string]bool)
+	persistenceChanges := make(map[string]bool)
+	logTampering := make(map[string]bool)
+	privilegeChanges := make(map[int]bool)
+	namespaceChanges := make(map[int]bool)
+	processAccesses := make(map[string]bool)
+	networkListeners := make(map[string]bool)
+	kernelTamper := make(map[string]bool)
 
 	for _, event := range ordered {
 		switch event.EventType {
 		case events.TypeExecve:
 			if isShell(event.ProcessName) {
 				shellProcesses[event.PID] = event
+				suspiciousProcessPIDs[event.PID] = true
 				if isWebProcess(event.ParentProcessName) {
 					result.add(signal("web_process_spawned_shell", 30, []events.Event{event},
 						fmt.Sprintf("%s spawned shell %s", event.ParentProcessName, event.ProcessName)))
@@ -67,6 +85,7 @@ func (Basic) Analyze(normalizedEvents []events.Event) Result {
 				result.add(signal("shell_downloaded_file", 20, []events.Event{event},
 					fmt.Sprintf("%s ran %s to download %s", event.ParentProcessName, event.ProcessName, displayDownloadOutput(downloadedPath))))
 				downloadProcesses[event.PID] = event
+				suspiciousProcessPIDs[event.PID] = true
 				if downloadedPath != "" {
 					downloadedFiles[downloadedPath] = []events.Event{event}
 				}
@@ -77,16 +96,19 @@ func (Basic) Analyze(normalizedEvents []events.Event) Result {
 					downloadEvents: downloadEvents,
 					executionEvent: event,
 				}
+				suspiciousProcessPIDs[event.PID] = true
 				result.add(signal("recently_downloaded_binary_executed", 30, appendEvents(downloadEvents, event),
 					fmt.Sprintf("recently downloaded file %s executed", event.ExecutablePath)))
 			}
 
 			if isCryptoMinerExecution(event) {
+				suspiciousProcessPIDs[event.PID] = true
 				result.add(signal("crypto_miner_process_name", 35, []events.Event{event},
 					fmt.Sprintf("process %s matched a known crypto miner name", event.ProcessName)))
 			}
 
 			if isUnexpectedNetworkToolExecution(event) {
+				suspiciousProcessPIDs[event.PID] = true
 				result.add(signal("unexpected_network_tool_execution", 20, []events.Event{event},
 					fmt.Sprintf("%s executed network utility %s", event.ParentProcessName, event.ProcessName)))
 			}
@@ -101,6 +123,34 @@ func (Basic) Analyze(normalizedEvents []events.Event) Result {
 				result.add(signal("sensitive_file_access", 35, []events.Event{event},
 					fmt.Sprintf("%s wrote sensitive file %s", event.ProcessName, event.FilePath)))
 				sensitiveFiles[event.FilePath] = true
+			}
+		case events.TypeSensitiveRead:
+			key := fmt.Sprintf("%d:%s", event.PID, event.FilePath)
+			if isSensitiveReadPath(event.FilePath) && !sensitiveReads[key] {
+				result.add(signal("sensitive_file_read", 25, []events.Event{event},
+					fmt.Sprintf("%s read sensitive file %s", event.ProcessName, event.FilePath)))
+				sensitiveReads[key] = true
+			}
+		case events.TypeFileLifecycle:
+			if !mutationSucceeded(event) {
+				continue
+			}
+			action := metadataString(event, "action")
+			if isPersistencePath(event.FilePath) {
+				key := action + ":" + event.FilePath
+				if !persistenceChanges[key] {
+					result.add(signal("persistence_path_modified", 35, []events.Event{event},
+						fmt.Sprintf("%s %s persistence path %s", event.ProcessName, lifecycleVerb(action), event.FilePath)))
+					persistenceChanges[key] = true
+				}
+			}
+			if isLogPath(event.FilePath) && isLogTamperAction(action) {
+				key := action + ":" + event.FilePath
+				if !logTampering[key] {
+					result.add(signal("log_tampering", 40, []events.Event{event},
+						fmt.Sprintf("%s %s log path %s", event.ProcessName, lifecycleVerb(action), event.FilePath)))
+					logTampering[key] = true
+				}
 			}
 		case events.TypeChmod:
 			if mutationSucceeded(event) && isTempPath(event.FilePath) && metadataBool(event, "added_execute_bit") {
@@ -126,6 +176,43 @@ func (Basic) Analyze(normalizedEvents []events.Event) Result {
 					fmt.Sprintf("shell %s %s unusual outbound endpoint %s",
 						event.ProcessName, connectVerb(event), remoteEndpoint(event))))
 				reverseShellConnections[connectionKey] = true
+			}
+		case events.TypePrivilegeChange:
+			if mutationSucceeded(event) && !privilegeChanges[event.PID] && isSuspiciousPrivilegeContext(event, suspiciousProcessPIDs) {
+				result.add(signal("privilege_change_after_suspicious_activity", 35, []events.Event{event},
+					fmt.Sprintf("%s called %s after suspicious activity", event.ProcessName, metadataString(event, "syscall"))))
+				privilegeChanges[event.PID] = true
+			}
+		case events.TypeNamespaceChange:
+			if mutationSucceeded(event) && !namespaceChanges[event.PID] {
+				result.add(signal("namespace_escape_attempt", 40, []events.Event{event},
+					fmt.Sprintf("%s called namespace syscall %s", event.ProcessName, metadataString(event, "syscall"))))
+				namespaceChanges[event.PID] = true
+			}
+		case events.TypeProcessAccess:
+			if mutationSucceeded(event) {
+				key := fmt.Sprintf("%d:%s:%d", event.PID, metadataString(event, "syscall"), metadataUint64(event, "target_pid"))
+				if !processAccesses[key] {
+					result.add(signal("process_memory_access", 35, []events.Event{event},
+						fmt.Sprintf("%s accessed another process with %s", event.ProcessName, metadataString(event, "syscall"))))
+					processAccesses[key] = true
+				}
+			}
+		case events.TypeNetworkServer:
+			if mutationSucceeded(event) && isUnexpectedNetworkListener(event) {
+				key := fmt.Sprintf("%d:%s:%d", event.PID, event.RemoteAddr, event.RemotePort)
+				if !networkListeners[key] {
+					result.add(signal("unexpected_network_listener", 30, []events.Event{event},
+						fmt.Sprintf("%s opened listener %s", event.ProcessName, listenEndpoint(event))))
+					networkListeners[key] = true
+				}
+			}
+		case events.TypeKernelTamper:
+			key := fmt.Sprintf("%d:%s", event.PID, metadataString(event, "syscall"))
+			if !kernelTamper[key] {
+				result.add(signal("kernel_tamper_syscall", 50, []events.Event{event},
+					fmt.Sprintf("%s called kernel tamper syscall %s", event.ProcessName, metadataString(event, "syscall"))))
+				kernelTamper[key] = true
 			}
 		}
 	}
@@ -220,6 +307,72 @@ func isSensitiveFile(path string) bool {
 		strings.HasSuffix(cleaned, "/.zshrc")
 }
 
+func isSensitiveReadPath(path string) bool {
+	cleaned := filepath.Clean(path)
+	if isSensitiveFile(cleaned) {
+		return true
+	}
+	switch cleaned {
+	case "/root/.aws/credentials", "/root/.docker/config.json":
+		return true
+	default:
+		return strings.HasPrefix(cleaned, "/root/.gnupg/") ||
+			strings.HasSuffix(cleaned, "/.ssh/id_rsa") ||
+			strings.HasSuffix(cleaned, "/.ssh/id_ed25519") ||
+			strings.HasSuffix(cleaned, "/.aws/credentials") ||
+			strings.HasSuffix(cleaned, "/.docker/config.json") ||
+			strings.HasSuffix(cleaned, "/.kube/config") ||
+			strings.Contains(cleaned, "/secrets/")
+	}
+}
+
+func isPersistencePath(path string) bool {
+	cleaned := filepath.Clean(path)
+	return strings.HasPrefix(cleaned, "/etc/systemd/system/") ||
+		strings.HasPrefix(cleaned, "/usr/lib/systemd/system/") ||
+		strings.HasPrefix(cleaned, "/etc/cron.") ||
+		strings.HasPrefix(cleaned, "/var/spool/cron/") ||
+		strings.HasPrefix(cleaned, "/etc/init.d/") ||
+		strings.HasPrefix(cleaned, "/root/.ssh/") ||
+		strings.HasSuffix(cleaned, "/.ssh/authorized_keys") ||
+		strings.HasSuffix(cleaned, "/.bashrc") ||
+		strings.HasSuffix(cleaned, "/.profile") ||
+		strings.HasSuffix(cleaned, "/.zshrc")
+}
+
+func isLogPath(path string) bool {
+	cleaned := filepath.Clean(path)
+	return cleaned == "/var/log" || strings.HasPrefix(cleaned, "/var/log/")
+}
+
+func isLogTamperAction(action string) bool {
+	switch action {
+	case "unlink", "rename", "truncate":
+		return true
+	default:
+		return false
+	}
+}
+
+func lifecycleVerb(action string) string {
+	switch action {
+	case "mkdir":
+		return "created"
+	case "unlink":
+		return "deleted"
+	case "rename":
+		return "renamed"
+	case "symlink":
+		return "created symlink at"
+	case "link":
+		return "created hard link at"
+	case "truncate":
+		return "truncated"
+	default:
+		return "modified"
+	}
+}
+
 func isCryptoMinerExecution(event events.Event) bool {
 	if isCryptoMinerName(event.ProcessName) || isCryptoMinerName(event.ExecutablePath) {
 		return true
@@ -253,6 +406,22 @@ func isUnexpectedNetworkToolExecution(event events.Event) bool {
 	}
 }
 
+func isSuspiciousPrivilegeContext(event events.Event, suspiciousProcessPIDs map[int]bool) bool {
+	return suspiciousProcessPIDs[event.PID] ||
+		isShell(event.ProcessName) ||
+		isShell(event.ParentProcessName) ||
+		isUnexpectedNetworkToolName(event.ProcessName)
+}
+
+func isUnexpectedNetworkToolName(name string) bool {
+	switch filepath.Base(name) {
+	case "nc", "ncat", "netcat", "socat", "telnet":
+		return true
+	default:
+		return false
+	}
+}
+
 func isShellConnection(event events.Event) bool {
 	return isShell(event.ProcessName) || isShell(event.ExecutablePath)
 }
@@ -260,6 +429,28 @@ func isShellConnection(event events.Event) bool {
 func isUnusualOutboundPort(port int) bool {
 	switch port {
 	case 0, 53, 80, 443:
+		return false
+	default:
+		return true
+	}
+}
+
+func isUnexpectedNetworkListener(event events.Event) bool {
+	syscall := metadataString(event, "syscall")
+	if syscall == "listen" {
+		return isShell(event.ProcessName) || isUnexpectedNetworkToolName(event.ProcessName)
+	}
+	if event.RemotePort == 0 {
+		return false
+	}
+	return isShell(event.ProcessName) ||
+		isUnexpectedNetworkToolName(event.ProcessName) ||
+		isUnusualListenerPort(event.RemotePort)
+}
+
+func isUnusualListenerPort(port int) bool {
+	switch port {
+	case 53, 80, 443, 8080, 8443:
 		return false
 	default:
 		return true
@@ -293,6 +484,37 @@ func metadataBool(event events.Event, key string) bool {
 	return ok && value
 }
 
+func metadataString(event events.Event, key string) string {
+	value, _ := event.Metadata[key].(string)
+	return value
+}
+
+func metadataUint64(event events.Event, key string) uint64 {
+	switch value := event.Metadata[key].(type) {
+	case uint64:
+		return value
+	case uint:
+		return uint64(value)
+	case int:
+		if value < 0 {
+			return 0
+		}
+		return uint64(value)
+	case int64:
+		if value < 0 {
+			return 0
+		}
+		return uint64(value)
+	case float64:
+		if value < 0 {
+			return 0
+		}
+		return uint64(value)
+	default:
+		return 0
+	}
+}
+
 func mutationSucceeded(event events.Event) bool {
 	outcome, _ := event.Metadata["outcome"].(string)
 	return outcome != "failed"
@@ -319,6 +541,13 @@ func fileWriteChanged(event events.Event) bool {
 }
 
 func remoteEndpoint(event events.Event) string {
+	return net.JoinHostPort(event.RemoteAddr, strconv.Itoa(event.RemotePort))
+}
+
+func listenEndpoint(event events.Event) string {
+	if event.RemoteAddr == "" || event.RemotePort == 0 {
+		return metadataString(event, "syscall")
+	}
 	return net.JoinHostPort(event.RemoteAddr, strconv.Itoa(event.RemotePort))
 }
 

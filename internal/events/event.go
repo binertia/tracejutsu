@@ -10,10 +10,17 @@ import (
 type Type string
 
 const (
-	TypeExecve    Type = "execve"
-	TypeConnect   Type = "connect"
-	TypeFileWrite Type = "file_write"
-	TypeChmod     Type = "chmod"
+	TypeExecve          Type = "execve"
+	TypeConnect         Type = "connect"
+	TypeFileWrite       Type = "file_write"
+	TypeChmod           Type = "chmod"
+	TypeSensitiveRead   Type = "sensitive_read"
+	TypeFileLifecycle   Type = "file_lifecycle"
+	TypePrivilegeChange Type = "privilege_change"
+	TypeNamespaceChange Type = "namespace_change"
+	TypeProcessAccess   Type = "process_access"
+	TypeNetworkServer   Type = "network_server"
+	TypeKernelTamper    Type = "kernel_tamper"
 )
 
 // Event is the stable userspace representation emitted by every collector.

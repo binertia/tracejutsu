@@ -133,6 +133,10 @@ func readRegisterArgument(ctx asm.Register, registerOffset int32, frame asm.Regi
 }
 
 func readPathArgument(ctx asm.Register, registerOffset int32, frame asm.Register, tempOffset, destinationOffset int16) asm.Instructions {
+	return readPathArgumentSized(ctx, registerOffset, frame, tempOffset, destinationOffset, filenameSize)
+}
+
+func readPathArgumentSized(ctx asm.Register, registerOffset int32, frame asm.Register, tempOffset, destinationOffset int16, size int32) asm.Instructions {
 	return asm.Instructions{
 		asm.LoadMem(asm.R3, ctx, 0, asm.DWord),
 		asm.Add.Imm(asm.R3, registerOffset),
@@ -143,7 +147,7 @@ func readPathArgument(ctx asm.Register, registerOffset int32, frame asm.Register
 		asm.LoadMem(asm.R3, frame, tempOffset, asm.DWord),
 		asm.Mov.Reg(asm.R1, frame),
 		asm.Add.Imm(asm.R1, int32(destinationOffset)),
-		asm.Mov.Imm(asm.R2, filenameSize),
+		asm.Mov.Imm(asm.R2, size),
 		asm.FnProbeReadUserStr.Call(),
 	}
 }

@@ -155,9 +155,11 @@ buffers with `--event-buffer 16384`, `--persist-buffer 16384`,
 directory matches the SQLite path checks in the application: the database parent
 directory must be owned by the service UID and must not permit group or other
 writes.
-The service enables all collectors by default. Add `--collectors` to the unit's
+The service enables the default four collectors by default: `execve`,
+`connect`, `file_write`, and `chmod`. Add `--collectors` to the unit's
 `ExecStart` only when you intentionally want a narrower deployment such as
-`--collectors execve,connect`.
+`--collectors execve,connect`, or an opt-in lab deployment such as
+`--collectors behavior_core`.
 If file-write volume is too high on a host, test `--file-write-min-bytes`
 before adding it to the service. A nonzero value filters smaller file writes in
 the eBPF exit probe before they enter the ring buffer.

@@ -215,3 +215,62 @@ func TestCompressNarratesInProgressConnect(t *testing.T) {
 		t.Fatalf("timeline = %v, want entry %q", incident.Timeline, want)
 	}
 }
+
+func TestCompressNarratesBehaviorCoreEvents(t *testing.T) {
+	timestamp := time.Date(2026, time.June, 6, 12, 0, 0, 0, time.UTC)
+	normalizedEvents := []events.Event{
+		{
+			EventID:     "evt-sensitive-read",
+			Timestamp:   timestamp,
+			Host:        "devbox-01",
+			PID:         7001,
+			ProcessName: "bash",
+			EventType:   events.TypeSensitiveRead,
+			FilePath:    "/root/.ssh/id_rsa",
+		},
+		{
+			EventID:     "evt-file-lifecycle",
+			Timestamp:   timestamp.Add(time.Second),
+			Host:        "devbox-01",
+			PID:         7001,
+			ProcessName: "bash",
+			EventType:   events.TypeFileLifecycle,
+			FilePath:    "/var/log/auth.log",
+			Metadata:    map[string]any{"action": "truncate"},
+		},
+		{
+			EventID:     "evt-process-access",
+			Timestamp:   timestamp.Add(2 * time.Second),
+			Host:        "devbox-01",
+			PID:         7001,
+			ProcessName: "python",
+			EventType:   events.TypeProcessAccess,
+			Metadata:    map[string]any{"syscall": "process_vm_writev", "target_pid": uint64(22)},
+		},
+		{
+			EventID:     "evt-network-server",
+			Timestamp:   timestamp.Add(3 * time.Second),
+			Host:        "devbox-01",
+			PID:         7001,
+			ProcessName: "bash",
+			EventType:   events.TypeNetworkServer,
+			RemoteAddr:  "0.0.0.0",
+			RemotePort:  4444,
+			Metadata:    map[string]any{"syscall": "bind"},
+		},
+	}
+
+	incident, err := compress.NewBasic().Compress(normalizedEvents, detect.Result{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"bash read sensitive file /root/.ssh/id_rsa",
+		"bash truncated /var/log/auth.log",
+		"python accessed process 22 with process_vm_writev",
+		"bash bound listener address 0.0.0.0:4444",
+	}
+	if !slices.Equal(incident.Timeline, want) {
+		t.Fatalf("timeline = %v, want %v", incident.Timeline, want)
+	}
+}

@@ -114,6 +114,48 @@ func NewRuntimeCollectorWithConfig(config RuntimeConfig) (Collector, error) {
 				return nil, err
 			}
 			collectors = append(collectors, collector)
+		case CollectorSensitiveRead:
+			collector, err := NewSensitiveReadCollectorWithConfig(config)
+			if err != nil {
+				return nil, err
+			}
+			collectors = append(collectors, collector)
+		case CollectorFileLifecycle:
+			collector, err := NewFileLifecycleCollectorWithConfig(config)
+			if err != nil {
+				return nil, err
+			}
+			collectors = append(collectors, collector)
+		case CollectorPrivilegeChange:
+			collector, err := NewPrivilegeChangeCollectorWithConfig(config)
+			if err != nil {
+				return nil, err
+			}
+			collectors = append(collectors, collector)
+		case CollectorNamespaceChange:
+			collector, err := NewNamespaceChangeCollectorWithConfig(config)
+			if err != nil {
+				return nil, err
+			}
+			collectors = append(collectors, collector)
+		case CollectorProcessAccess:
+			collector, err := NewProcessAccessCollectorWithConfig(config)
+			if err != nil {
+				return nil, err
+			}
+			collectors = append(collectors, collector)
+		case CollectorNetworkServer:
+			collector, err := NewNetworkServerCollectorWithConfig(config)
+			if err != nil {
+				return nil, err
+			}
+			collectors = append(collectors, collector)
+		case CollectorKernelTamper:
+			collector, err := NewKernelTamperCollectorWithConfig(config)
+			if err != nil {
+				return nil, err
+			}
+			collectors = append(collectors, collector)
 		}
 	}
 	return NewCompositeCollector(collectors...), nil

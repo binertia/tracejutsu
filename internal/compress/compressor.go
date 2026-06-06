@@ -156,6 +156,40 @@ func timeline(normalizedEvents []events.Event) []string {
 			}
 			entries = append(entries, fmt.Sprintf("%s connected to %s",
 				displayExecutable(event), remoteEndpoint(event)))
+		case events.TypeSensitiveRead:
+			if !mutationSucceeded(event) {
+				entries = append(entries, fmt.Sprintf("%s failed to read sensitive file %s", event.ProcessName, event.FilePath))
+				continue
+			}
+			entries = append(entries, fmt.Sprintf("%s read sensitive file %s", event.ProcessName, event.FilePath))
+		case events.TypeFileLifecycle:
+			action := metadataString(event, "action")
+			if !mutationSucceeded(event) {
+				entries = append(entries, fmt.Sprintf("%s failed to %s %s", event.ProcessName, lifecycleVerb(action), event.FilePath))
+				continue
+			}
+			entries = append(entries, fmt.Sprintf("%s %s %s", event.ProcessName, lifecyclePastTense(action), event.FilePath))
+		case events.TypePrivilegeChange:
+			entries = append(entries, fmt.Sprintf("%s called privilege syscall %s", event.ProcessName, metadataString(event, "syscall")))
+		case events.TypeNamespaceChange:
+			entries = append(entries, fmt.Sprintf("%s called namespace syscall %s", event.ProcessName, metadataString(event, "syscall")))
+		case events.TypeProcessAccess:
+			if target := metadataUint64(event, "target_pid"); target != 0 {
+				entries = append(entries, fmt.Sprintf("%s accessed process %d with %s", event.ProcessName, target, metadataString(event, "syscall")))
+				continue
+			}
+			entries = append(entries, fmt.Sprintf("%s accessed another process with %s", event.ProcessName, metadataString(event, "syscall")))
+		case events.TypeNetworkServer:
+			switch metadataString(event, "syscall") {
+			case "bind":
+				entries = append(entries, fmt.Sprintf("%s bound listener address %s", event.ProcessName, remoteEndpoint(event)))
+			case "listen":
+				entries = append(entries, fmt.Sprintf("%s started listening on fd %v", event.ProcessName, event.Metadata["fd"]))
+			default:
+				entries = append(entries, fmt.Sprintf("%s opened network server syscall %s", event.ProcessName, metadataString(event, "syscall")))
+			}
+		case events.TypeKernelTamper:
+			entries = append(entries, fmt.Sprintf("%s called kernel tamper syscall %s", event.ProcessName, metadataString(event, "syscall")))
 		}
 	}
 	return entries
@@ -251,6 +285,75 @@ func fileWriteChanged(event events.Event) bool {
 		return count > 0
 	default:
 		return false
+	}
+}
+
+func metadataString(event events.Event, key string) string {
+	value, _ := event.Metadata[key].(string)
+	return value
+}
+
+func metadataUint64(event events.Event, key string) uint64 {
+	switch value := event.Metadata[key].(type) {
+	case uint64:
+		return value
+	case uint:
+		return uint64(value)
+	case int:
+		if value < 0 {
+			return 0
+		}
+		return uint64(value)
+	case int64:
+		if value < 0 {
+			return 0
+		}
+		return uint64(value)
+	case float64:
+		if value < 0 {
+			return 0
+		}
+		return uint64(value)
+	default:
+		return 0
+	}
+}
+
+func lifecycleVerb(action string) string {
+	switch action {
+	case "mkdir":
+		return "create"
+	case "unlink":
+		return "delete"
+	case "rename":
+		return "rename"
+	case "symlink":
+		return "create symlink at"
+	case "link":
+		return "create hard link at"
+	case "truncate":
+		return "truncate"
+	default:
+		return "modify"
+	}
+}
+
+func lifecyclePastTense(action string) string {
+	switch action {
+	case "mkdir":
+		return "created"
+	case "unlink":
+		return "deleted"
+	case "rename":
+		return "renamed"
+	case "symlink":
+		return "created symlink at"
+	case "link":
+		return "created hard link at"
+	case "truncate":
+		return "truncated"
+	default:
+		return "modified"
 	}
 }
 

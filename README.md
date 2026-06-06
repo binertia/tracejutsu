@@ -10,9 +10,10 @@ go run ./cmd/tracejutsu demo
 go test ./...
 ```
 
-On Linux amd64 and native arm64, the live sensor streams normalized `execve`,
-IPv4/IPv6 `connect`, path-backed file write, and `chmod` events as JSON. It uses raw
-tracepoints and requires root or equivalent eBPF capabilities:
+On Linux amd64 and native arm64, the default live sensor streams normalized
+`execve`, IPv4/IPv6 `connect`, path-backed file write, and `chmod` events as
+JSON. It uses raw tracepoints and requires root or equivalent eBPF
+capabilities:
 
 ```sh
 sudo go run ./cmd/tracejutsu run
@@ -28,6 +29,19 @@ prove that the bit was newly added.
 On arm64, direct `chmod` libc calls are captured through the `fchmodat` family
 provided by the arm64 syscall ABI. Arm64 live hardware validation is tracked as
 an experiment in [`docs/ARM_TEST.md`](docs/ARM_TEST.md).
+
+For security-lab and behavior-chain investigation, opt in to the broader
+behavior-core collector set:
+
+```sh
+sudo go run ./cmd/tracejutsu run --collectors behavior_core
+```
+
+`behavior_core` adds `sensitive_read`, `file_lifecycle`, `privilege_change`,
+`namespace_change`, `process_access`, `network_server`, and `kernel_tamper`
+events while preserving the default four collectors. These categories are not
+enabled by `all` until separate stress validation proves their production noise
+and drop behavior.
 
 Persist the fake pipeline to a local SQLite database and inspect the result:
 
@@ -54,11 +68,13 @@ with `--flush-after`. Use `--quiet-events` for service-style runs that should
 print incidents and stats without per-event JSON. Tune periodic stats with
 `--stats-interval`; `0` disables periodic stats but still prints final shutdown
 stats. Burst buffers can be tuned with `--event-buffer`, `--persist-buffer`,
-`--persist-batch-size`, and `--ring-buffer-size`. Active candidates retain at
-most 4096 recent events each and 65536 events in total. Compressed incident
-reports expose dropped older events. Live collection prints ingestion,
-analysis, event and incident persistence, kernel ring-buffer drop, and
-syscall-correlation-drop counters every 10 seconds by default and at shutdown.
+`--persist-batch-size`, and `--ring-buffer-size`. Use `--collectors` to select
+`all`, `behavior_core`, or an explicit comma-separated collector subset. Active
+candidates retain at most 4096 recent events each and 65536 events in total.
+Compressed incident reports expose dropped older events. Live collection prints
+ingestion, analysis, event and incident persistence, kernel ring-buffer drop,
+and syscall-correlation-drop counters every 10 seconds by default and at
+shutdown.
 
 Analyze a stored incident with a local `llama-server`-compatible HTTP endpoint:
 

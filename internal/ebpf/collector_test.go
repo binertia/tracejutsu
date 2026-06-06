@@ -143,6 +143,11 @@ func TestParseCollectorNames(t *testing.T) {
 			input: "FILE_WRITE,CHMOD",
 			want:  []string{CollectorFileWrite, CollectorChmod},
 		},
+		{
+			name:  "behavior core alias",
+			input: "behavior_core",
+			want:  BehaviorCoreCollectorNames(),
+		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			got, err := ParseCollectorNames(test.input)
@@ -157,7 +162,7 @@ func TestParseCollectorNames(t *testing.T) {
 }
 
 func TestParseCollectorNamesRejectsInvalidInput(t *testing.T) {
-	for _, input := range []string{"execve,,connect", "unknown", "all,execve", "connect,connect"} {
+	for _, input := range []string{"execve,,connect", "unknown", "all,execve", "behavior_core,execve", "connect,connect"} {
 		t.Run(input, func(t *testing.T) {
 			if _, err := ParseCollectorNames(input); err == nil {
 				t.Fatal("expected error")

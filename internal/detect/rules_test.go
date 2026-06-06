@@ -123,6 +123,118 @@ func TestBasicAnalyzeAdditionalRulesFixture(t *testing.T) {
 	}
 }
 
+func TestBasicAnalyzeBehaviorCoreSignals(t *testing.T) {
+	timestamp := time.Date(2026, time.June, 6, 12, 0, 0, 0, time.UTC)
+	normalizedEvents := []events.Event{
+		{
+			EventID:     "evt-behavior-001",
+			Timestamp:   timestamp,
+			Host:        "devbox-01",
+			PID:         7001,
+			ProcessName: "bash",
+			EventType:   events.TypeSensitiveRead,
+			FilePath:    "/root/.ssh/id_rsa",
+		},
+		{
+			EventID:     "evt-behavior-002",
+			Timestamp:   timestamp.Add(time.Second),
+			Host:        "devbox-01",
+			PID:         7001,
+			ProcessName: "bash",
+			EventType:   events.TypeFileLifecycle,
+			FilePath:    "/etc/systemd/system/update.service",
+			Metadata:    map[string]any{"action": "symlink"},
+		},
+		{
+			EventID:     "evt-behavior-003",
+			Timestamp:   timestamp.Add(2 * time.Second),
+			Host:        "devbox-01",
+			PID:         7001,
+			ProcessName: "bash",
+			EventType:   events.TypeFileLifecycle,
+			FilePath:    "/var/log/auth.log",
+			Metadata:    map[string]any{"action": "truncate"},
+		},
+		{
+			EventID:     "evt-behavior-004",
+			Timestamp:   timestamp.Add(3 * time.Second),
+			Host:        "devbox-01",
+			PID:         7001,
+			ProcessName: "bash",
+			EventType:   events.TypeExecve,
+		},
+		{
+			EventID:     "evt-behavior-005",
+			Timestamp:   timestamp.Add(4 * time.Second),
+			Host:        "devbox-01",
+			PID:         7001,
+			ProcessName: "bash",
+			EventType:   events.TypePrivilegeChange,
+			Metadata:    map[string]any{"syscall": "setuid"},
+		},
+		{
+			EventID:     "evt-behavior-006",
+			Timestamp:   timestamp.Add(5 * time.Second),
+			Host:        "devbox-01",
+			PID:         7001,
+			ProcessName: "bash",
+			EventType:   events.TypeNamespaceChange,
+			Metadata:    map[string]any{"syscall": "setns"},
+		},
+		{
+			EventID:     "evt-behavior-007",
+			Timestamp:   timestamp.Add(6 * time.Second),
+			Host:        "devbox-01",
+			PID:         7001,
+			ProcessName: "bash",
+			EventType:   events.TypeProcessAccess,
+			Metadata:    map[string]any{"syscall": "process_vm_writev", "target_pid": uint64(22)},
+		},
+		{
+			EventID:     "evt-behavior-008",
+			Timestamp:   timestamp.Add(7 * time.Second),
+			Host:        "devbox-01",
+			PID:         7001,
+			ProcessName: "bash",
+			EventType:   events.TypeNetworkServer,
+			RemoteAddr:  "0.0.0.0",
+			RemotePort:  4444,
+			Metadata:    map[string]any{"syscall": "bind"},
+		},
+		{
+			EventID:     "evt-behavior-009",
+			Timestamp:   timestamp.Add(8 * time.Second),
+			Host:        "devbox-01",
+			PID:         7001,
+			ProcessName: "bash",
+			EventType:   events.TypeKernelTamper,
+			Metadata:    map[string]any{"syscall": "bpf"},
+		},
+	}
+
+	result := detect.NewBasic().Analyze(normalizedEvents)
+	wantRuleIDs := []string{
+		"sensitive_file_read",
+		"persistence_path_modified",
+		"log_tampering",
+		"privilege_change_after_suspicious_activity",
+		"namespace_escape_attempt",
+		"process_memory_access",
+		"unexpected_network_listener",
+		"kernel_tamper_syscall",
+	}
+	gotRuleIDs := make([]string, 0, len(result.Signals))
+	for _, signal := range result.Signals {
+		gotRuleIDs = append(gotRuleIDs, signal.RuleID)
+	}
+	if !slices.Equal(gotRuleIDs, wantRuleIDs) {
+		t.Fatalf("rule IDs = %v, want %v", gotRuleIDs, wantRuleIDs)
+	}
+	if result.RiskScore != 100 {
+		t.Fatalf("risk score = %d, want capped score 100", result.RiskScore)
+	}
+}
+
 func TestBasicAnalyzeIgnoresFailedAndEmptyMutations(t *testing.T) {
 	timestamp := time.Date(2026, time.June, 2, 12, 0, 0, 0, time.UTC)
 	normalizedEvents := []events.Event{
