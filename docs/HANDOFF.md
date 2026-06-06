@@ -28,6 +28,11 @@ added. A follow-up root-only eBPF smoke pass was reported on 2026-06-04 after
 tracejutsu self file writes were excluded. IPv4 and IPv6 connect smoke
 subtests also passed after IPv6 sockaddr capture and connect syscall-exit
 outcome handling were added.
+Behavior-core root smoke tests are now implemented behind the same
+`ebpf_smoke` tag for `sensitive_read`, `file_lifecycle`, `privilege_change`,
+`namespace_change`, `process_access`, `network_server`, and `kernel_tamper`;
+they compile locally but still need a privileged BPF-capable host run before
+claiming live validation for those opt-in collectors.
 An actual local `llama-server` report also completed successfully after JSON
 Schema output enforcement was added: the response decoded, persisted, and
 rendered through `tracejutsu show`.
@@ -454,7 +459,7 @@ correlation path:
 
 ```sh
 sudo go test -tags=ebpf_smoke ./internal/ebpf \
-  -run 'Test(Execve|Connect|FileWrite|Chmod)CollectorSmoke'
+  -run 'Test(Execve|Connect|FileWrite|Chmod|SensitiveRead|FileLifecycle|PrivilegeChange|NamespaceChange|ProcessAccess|NetworkServer|KernelTamper)CollectorSmoke'
 ```
 
 The latest focused connect smoke validation passed with both IPv4 and IPv6:

@@ -52,7 +52,7 @@ sudo env \
   GOCACHE=/tmp/tracejutsu-gocache \
   GOMODCACHE="$(go env GOMODCACHE)" \
   "$(command -v go)" test -tags=ebpf_smoke ./internal/ebpf \
-  -run 'Test(Execve|Connect|FileWrite|Chmod)CollectorSmoke' -v
+  -run 'Test(Execve|Connect|FileWrite|Chmod|SensitiveRead|FileLifecycle|PrivilegeChange|NamespaceChange|ProcessAccess|NetworkServer|KernelTamper)CollectorSmoke' -v
 ```
 
 Run transient systemd smoke:
@@ -201,7 +201,7 @@ scripts/validation-bundle.sh \
 
 ## Pass Criteria
 
-- Root smoke passes all four collectors.
+- Root smoke passes the default collectors and behavior-core collectors.
 - Systemd smoke exits successfully.
 - Stress exits successfully.
 - Final stats show:

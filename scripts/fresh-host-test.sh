@@ -470,7 +470,7 @@ if [[ "$skip_root_smoke" -ne 1 ]]; then
 		"GOCACHE=$GOCACHE" \
 		"GOMODCACHE=$GOMODCACHE" \
 		"$(command -v go)" test -tags=ebpf_smoke ./internal/ebpf \
-		-run 'Test(Execve|Connect|FileWrite|Chmod)CollectorSmoke' -v
+		-run 'Test(Execve|Connect|FileWrite|Chmod|SensitiveRead|FileLifecycle|PrivilegeChange|NamespaceChange|ProcessAccess|NetworkServer|KernelTamper)CollectorSmoke' -v
 fi
 
 if [[ "$skip_systemd_smoke" -ne 1 ]]; then

@@ -260,7 +260,7 @@ sudo env \
   GOCACHE=/tmp/tracejutsu-gocache \
   GOMODCACHE="$(go env GOMODCACHE)" \
   "$(command -v go)" test -tags=ebpf_smoke ./internal/ebpf \
-  -run 'Test(Execve|Connect|FileWrite|Chmod)CollectorSmoke' -v
+  -run 'Test(Execve|Connect|FileWrite|Chmod|SensitiveRead|FileLifecycle|PrivilegeChange|NamespaceChange|ProcessAccess|NetworkServer|KernelTamper)CollectorSmoke' -v
 ```
 
 On arm64 hosts, expect direct `chmod` user-space calls to appear as

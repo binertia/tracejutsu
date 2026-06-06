@@ -506,7 +506,7 @@ Every phase should leave the repository runnable. Test commands assume the recom
 - **Goal:** Load the first eBPF program and emit process execution records.
 - **Files likely changed:** `internal/ebpf/collector.go`, `internal/ebpf/execve.bpf.c`, generated loader files
 - **Acceptance criteria:** A root-only smoke run observes a known command execution and userspace receives it.
-- **Test command:** `sudo go test -tags=ebpf_smoke ./internal/ebpf -run TestExecveSmoke`
+- **Test command:** `sudo go test -tags=ebpf_smoke ./internal/ebpf -run TestExecveCollectorSmoke`
 
 ### Phase 3: Normalized Event Pipeline
 
@@ -534,14 +534,14 @@ Every phase should leave the repository runnable. Test commands assume the recom
 - **Goal:** Capture outbound connection metadata and attach it to the process tree.
 - **Files likely changed:** `internal/ebpf/connect.bpf.c`, generated loader files, `internal/events/normalize.go`
 - **Acceptance criteria:** A root-only smoke run captures destination address and port for a known connection.
-- **Test command:** `sudo go test -tags=ebpf_smoke ./internal/ebpf -run TestConnectSmoke`
+- **Test command:** `sudo go test -tags=ebpf_smoke ./internal/ebpf -run TestConnectCollectorSmoke`
 
 ### Phase 7: File and `chmod` Collector
 
 - **Goal:** Capture file write and executable-permission changes for correlation.
 - **Files likely changed:** `internal/ebpf/file.bpf.c`, `internal/ebpf/chmod.bpf.c`, generated loader files, `internal/events/normalize.go`
 - **Acceptance criteria:** A root-only smoke run captures a write and `chmod +x` under `/tmp`.
-- **Test command:** `sudo go test -tags=ebpf_smoke ./internal/ebpf -run 'Test(FileWrite|Chmod)Smoke'`
+- **Test command:** `sudo go test -tags=ebpf_smoke ./internal/ebpf -run 'Test(FileWrite|Chmod)CollectorSmoke'`
 
 ### Phase 8: Detection Rules
 

@@ -17,7 +17,8 @@ capabilities:
 
 ```sh
 sudo go run ./cmd/tracejutsu run
-sudo go test -tags=ebpf_smoke ./internal/ebpf -run 'Test(Execve|Connect|FileWrite|Chmod)CollectorSmoke'
+sudo go test -tags=ebpf_smoke ./internal/ebpf \
+  -run 'Test(Execve|Connect|FileWrite|Chmod|SensitiveRead|FileLifecycle|PrivilegeChange|NamespaceChange|ProcessAccess|NetworkServer|KernelTamper)CollectorSmoke'
 ```
 
 The live collectors are assembled in Go, so they do not require `clang`.
