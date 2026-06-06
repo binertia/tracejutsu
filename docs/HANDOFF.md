@@ -1,6 +1,6 @@
 # Tracejutsu Handoff
 
-Updated: 2026-06-05
+Updated: 2026-06-06
 
 ## Current State
 
@@ -179,6 +179,19 @@ For disposable Debian/Ubuntu validation hosts, `./test.sh --yes` now bootstraps
 apt dependencies, ensures the pinned Go toolchain, runs release/smoke/stress
 checks, and validates direct `.deb` plus local APT repository installation in
 one command.
+On 2026-06-06, the full local non-root release gate passed again on `dev` at
+`b33b2c769cc1`. It covered shell syntax checks, `go test ./...`, `go vet
+./...`, `go test -race ./...`, eBPF smoke compile coverage, tarball, Debian
+package, APT repository metadata, release-bundle, manifest verification,
+`govulncheck` with no vulnerabilities, and dependency review. A fresh unsigned
+`v0.1.0` release bundle was built in `dist/v0.1.0` with maintainer
+`binertia <bat@binertia.cc>`. The bundled binary reports `tracejutsu v0.1.0`,
+commit `b33b2c769cc1`, build date `2026-06-05T16:22:29Z`; the Debian package
+metadata reports version `0.1.0`, architecture `amd64`, and the same
+maintainer. `dist/v0.1.0/SHA256SUMS` verifies and includes
+`dependency-review.md`, which reports 34 modules and zero missing top-level
+license files. Detached signing was not performed because GPG keyring access
+requires explicit user approval in this workspace.
 
 The current handoff target is a production/distribution-grade release. The
 approximate readiness is:
@@ -221,10 +234,14 @@ Before calling this distribution-grade, finish these tracks:
   Bookworm has passed this check.
 - Decide the release claim for arm64. Keep it experimental unless a native
   arm64 host completes the smoke/stress runbook in [`ARM_TEST.md`](ARM_TEST.md).
-- Review `scripts/dependency-review.sh --out dist/dependency-review.md` output
-  before publishing packages for other users.
-- Set a real Debian package maintainer with `scripts/build-deb.sh --maintainer`
-  or `TRACEJUTSU_PACKAGE_MAINTAINER` before publishing a `.deb`.
+- Before publishing, review the fresh `dist/v0.1.0/dependency-review.md`
+  output. The latest generated review reports zero missing top-level license
+  files.
+- Sign and verify `dist/v0.1.0/SHA256SUMS` with
+  `scripts/release-manifest.sh --dir dist/v0.1.0 --sign` once GPG keyring
+  access is explicitly approved. Older root-level `dist/` artifacts were built
+  before `b33b2c769cc1`; prefer the fresh `dist/v0.1.0` bundle unless those
+  root-level artifacts are intentionally regenerated.
 
 ## Implemented MVP Surface
 
@@ -454,33 +471,36 @@ go run ./cmd/tracejutsu show --db "$DB" inc-evt-001
 
 ## Recommended Next Task
 
-1. Push or otherwise back up any latest signed commits after checking
-   `git status --short --branch`.
-2. Run the full local release gate with vulnerability lookup:
+1. Push or otherwise back up the latest signed commits after checking
+   `git status --short --branch`. If any source or release-script changes land
+   after `b33b2c769cc1`, re-run the local release gate and rebuild the bundle.
+2. Sign the fresh current-head release bundle manifest after explicitly
+   approving GPG keyring access:
 
    ```sh
-   scripts/release-check.sh
+   scripts/release-manifest.sh --dir dist/v0.1.0 --sign
    ```
 
-3. Build the release directory with real maintainer metadata:
+   Add `--local-user KEY` if the default signing key is not the desired release
+   key.
+3. Verify the published `SHA256SUMS` plus `SHA256SUMS.asc` on a clean machine:
 
    ```sh
-   scripts/release-bundle.sh --version v0.1.0 --maintainer "Your Name <you@example.com>" --sign
+   scripts/release-manifest.sh --dir dist/v0.1.0 --verify
    ```
 
-4. Inspect the generated artifacts, `tracejutsu version` output, and
-   `dependency-review.md`.
-5. Verify the published `SHA256SUMS` plus `SHA256SUMS.asc` on a clean machine.
-6. Keep `validation-artifacts/debian-13-docker-container-host.tar.gz` as the
+4. Keep `validation-artifacts/debian-13-docker-container-host.tar.gz` as the
    container-host evidence bundle for release notes.
-7. Re-run package lifecycle smoke against the actual release `.deb` on any
+5. Re-run package lifecycle smoke against the actual release `.deb` on any
    release target whose full log was not preserved after the journal timestamp
    compatibility fix:
 
    ```sh
-   scripts/package-install-smoke.sh --deb dist/tracejutsu_0.1.0_amd64.deb --duration 10m --yes
+   scripts/package-install-smoke.sh --deb dist/v0.1.0/tracejutsu_0.1.0_amd64.deb --duration 10m --yes
    ```
-8. Start `.rpm` or broader package-format work only after evidence bundles are
+6. Validate the experimental APT repository path on a fresh Debian/Ubuntu host
+   if repository-style installation will be part of the release claim.
+7. Start `.rpm` or broader package-format work only after evidence bundles are
    saved and any required stricter-host pass has zero required drops.
 
 ## File Map
