@@ -73,6 +73,22 @@ run release checks, run smoke/stress, and validate direct `.deb` plus local APT
 repository package installation. Use `./test.sh --quick --yes` for a shorter
 first pass before spending a full 30 minutes on stress.
 
+If the validation user should not run the full script through `sudo`, keep one
+shared logs directory and run the privileged and non-privileged phases
+separately:
+
+```sh
+logs=validation-artifacts/fresh-host-vps
+sudo ./test.sh --phase setup --logs-dir "$logs" --yes
+./test.sh --phase user --logs-dir "$logs" --yes
+sudo ./test.sh --phase root --logs-dir "$logs" --yes
+```
+
+The shared directory carries the generated version and release artifacts between
+phases. The `sudo` root phase auto-detects the Go toolchain installed under the
+sudo user's home; from a direct root shell, add `--go-bin PATH` if Go is not in
+root's `PATH`.
+
 ## Container Host Workload
 
 On a host with Docker or Podman, run the normal host stress helper first, then

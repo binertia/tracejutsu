@@ -183,7 +183,10 @@ through that repository; a fresh-host run of that path is still pending.
 For disposable Debian/Ubuntu validation hosts, `./test.sh --yes` now bootstraps
 apt dependencies, ensures the pinned Go toolchain, runs release/smoke/stress
 checks, and validates direct `.deb` plus local APT repository installation in
-one command.
+one command. The same helper also supports split VPS phases when only setup and
+runtime validation should be privileged: run `sudo ./test.sh --phase setup`,
+then `./test.sh --phase user`, then `sudo ./test.sh --phase root` with the same
+`--logs-dir`.
 On 2026-06-06, after the behavior-core syscall collectors and smoke coverage
 were added, the full local non-root release gate passed again on `dev` at
 `a076183828c8`. It covered shell syntax checks, `go test ./...`, `go vet

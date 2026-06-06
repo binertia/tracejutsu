@@ -120,6 +120,21 @@ run the full validation path with:
 
 Use `./test.sh --quick --yes` for a shorter first pass.
 
+If the VPS validation user should not run the whole script through `sudo`, use
+the split phases with one shared logs directory:
+
+```sh
+logs=validation-artifacts/fresh-host-vps
+sudo ./test.sh --phase setup --logs-dir "$logs" --yes
+./test.sh --phase user --logs-dir "$logs" --yes
+sudo ./test.sh --phase root --logs-dir "$logs" --yes
+```
+
+The `sudo` form auto-detects the Go toolchain installed by the user phase. From
+a direct root shell, pass
+`--go-bin /home/USER/.local/share/tracejutsu-go/goVERSION/bin/go` if Go is not
+already in root's `PATH`.
+
 To build a version-stamped release tarball for the current Linux architecture:
 
 ```sh
