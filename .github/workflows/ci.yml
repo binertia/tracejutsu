@@ -38,16 +38,16 @@ jobs:
           cat /tmp/dependency-review.md
 
       - name: Build release tarball
-        run: scripts/build-release.sh --version ci-test --out /tmp/tracejutsu-release
+        run: scripts/build-release.sh --version 0.0.0-ci-test --out /tmp/tracejutsu-release
 
       - name: Build Debian package
         run: |
           sudo apt-get update && sudo apt-get install -y dpkg-dev
-          scripts/build-deb.sh --version ci-test --out /tmp/tracejutsu-release --maintainer "CI Test <ci@example.invalid>"
+          scripts/build-deb.sh --version 0.0.0-ci-test --out /tmp/tracejutsu-release --maintainer "CI Test <ci@example.invalid>"
 
       - name: Verify artifacts
         run: |
           cd /tmp/tracejutsu-release
           sha256sum -c SHA256SUMS
-          dpkg-deb --info tracejutsu_ci-test_amd64.deb | grep -F "Version: ci-test"
-          tar -tzf tracejutsu-vci-test-linux-amd64.tar.gz | grep tracejutsu
+          dpkg-deb --info tracejutsu_0.0.0-ci-test_amd64.deb | grep -F "Version: 0.0.0-ci-test"
+          tar -tzf tracejutsu-0.0.0-ci-test-linux-amd64.tar.gz | grep tracejutsu
