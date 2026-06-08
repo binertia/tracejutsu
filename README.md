@@ -3,6 +3,29 @@
 Tracejutsu is a local-first runtime security analyst using eBPF event
 compression and local LLM reasoning.
 
+```
+  eBPF tracepoints  →  Collector  →  Normalizer  →  Grouper  →  Rules  →  Compressor
+       (kernel)       (Go)          (JSON)       (process    (score)    (incident
+                                                      trees)                timeline)
+                                                          |
+                                                          v
+                                                    SQLite (WAL)
+                                                          |
+                                           +--------------+--------------+
+                                           |                             |
+                                           v                             v
+                                    Local LLM analysis            Terminal report
+                                    (llama-server)               tracejutsu show
+```
+
+### Use cases
+
+| Audience | What tracejutsu gives you |
+|----------|---------------------------|
+| **Malware researcher** | Live process spawn chains, file modifications, and network egress compressed into incident timelines with full ancestry. |
+| **AI agent auditor** | Every command executed, outbound connection, and permission change captured into an offline narrative. No blind trust in the agent. |
+| **Junior security analyst** | Deterministic incident grouping + LLM-generated behavior breakdown. No complex rules, no cloud SIEM, no data leakage. |
+
 > **Release scope:** The current `v0.1.0` release is validated and supported for
 > **Debian 13 (trixie) amd64** only. The code may run on other Linux
 > distributions, but they are not validated for this release. See
