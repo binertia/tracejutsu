@@ -465,6 +465,66 @@ func TestSQLitePersistsLLMReportAndMarksIncidentComplete(t *testing.T) {
 	}
 }
 
+func TestSQLiteListTriageIncidentsOrdersFiltersAndCountsEvidence(t *testing.T) {
+	ctx := context.Background()
+	database := openTestSQLite(t)
+	normalizedEvents := loadFixture(t, "../../testdata/events/web-download-execute-connect.json")
+	if err := database.SaveEvents(ctx, normalizedEvents); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, incident := range []compress.Incident{
+		testIncident("inc-low", 20, time.Date(2026, time.June, 3, 10, 0, 0, 0, time.UTC)),
+		testIncident("inc-critical-old", 90, time.Date(2026, time.June, 3, 11, 0, 0, 0, time.UTC)),
+		testIncident("inc-critical-new", 90, time.Date(2026, time.June, 3, 12, 0, 0, 0, time.UTC)),
+		testIncident("inc-high", 70, time.Date(2026, time.June, 3, 13, 0, 0, 0, time.UTC)),
+	} {
+		if err := database.SaveIncident(ctx, incident); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := database.LinkIncidentEvents(ctx, "inc-critical-new", []string{"evt-001", "evt-002"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.LinkIncidentEvents(ctx, "inc-critical-old", []string{"evt-003"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.LinkIncidentEvents(ctx, "inc-high", []string{"evt-004", "evt-005"}); err != nil {
+		t.Fatal(err)
+	}
+
+	entries, err := database.ListTriageIncidents(ctx, 2, 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("entry count = %d, want 2", len(entries))
+	}
+	if entries[0].Incident.IncidentID != "inc-critical-new" || entries[0].EvidenceCount != 2 {
+		t.Fatalf("first entry = %+v, want inc-critical-new with 2 evidence events", entries[0])
+	}
+	if entries[1].Incident.IncidentID != "inc-critical-old" || entries[1].EvidenceCount != 1 {
+		t.Fatalf("second entry = %+v, want inc-critical-old with 1 evidence event", entries[1])
+	}
+}
+
+func testIncident(id string, score int, start time.Time) compress.Incident {
+	return compress.Incident{
+		IncidentID: id,
+		StartTime:  start,
+		EndTime:    start.Add(time.Minute),
+		RootProcess: compress.RootProcess{
+			PID:         score,
+			ProcessName: "proc",
+		},
+		RiskScore: score,
+		Signals:   []string{"test_signal"},
+		Timeline:  []string{"test timeline"},
+		Summary:   "test summary",
+		LLMStatus: "pending",
+	}
+}
+
 func openTestSQLite(t *testing.T) *store.SQLite {
 	t.Helper()
 	database, err := store.OpenSQLite(filepath.Join(privateTempDir(t), "tracejutsu.db"))

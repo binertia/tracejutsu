@@ -325,6 +325,179 @@ func TestRunLLMAnalyzesStoredIncident(t *testing.T) {
 	}
 }
 
+func TestRunTriageShowsPrioritizedDemoIncident(t *testing.T) {
+	databaseDirectory := t.TempDir()
+	if err := os.Chmod(databaseDirectory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	databasePath := filepath.Join(databaseDirectory, "tracejutsu.db")
+	if err := run([]string{
+		"demo",
+		"--db", databasePath,
+		"../../testdata/events/web-download-execute-connect.json",
+	}, &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+
+	var output bytes.Buffer
+	if err := run([]string{
+		"triage",
+		"--db", databasePath,
+		"--evidence-limit", "2",
+	}, &output); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, expected := range []string{
+		"triage incidents",
+		"INCIDENT inc-evt-001  CRITICAL  score=100",
+		"llm=pending  evidence=5",
+		"summary: nginx spawned a shell",
+		"signals:",
+		"web_process_spawned_shell",
+		"timeline:",
+		"nginx spawned shell sh",
+		"evidence:",
+		"evt-001 execve",
+		"... 3 more",
+		"next: tracejutsu show --db " + databasePath + " inc-evt-001",
+	} {
+		if !strings.Contains(output.String(), expected) {
+			t.Fatalf("output = %q, want substring %q", output.String(), expected)
+		}
+	}
+}
+
+func TestRunTriageFiltersLimitsAndValidatesOptions(t *testing.T) {
+	databaseDirectory := t.TempDir()
+	if err := os.Chmod(databaseDirectory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	databasePath := filepath.Join(databaseDirectory, "tracejutsu.db")
+	database, err := store.OpenSQLite(databasePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	normalizedEvents := loadMainFixture(t)
+	if err := database.SaveEvents(context.Background(), normalizedEvents); err != nil {
+		t.Fatal(err)
+	}
+	incidents := []compress.Incident{
+		mainTestIncident("inc-low", 25, time.Date(2026, time.June, 4, 10, 0, 0, 0, time.UTC), "low summary"),
+		mainTestIncident("inc-high-old", 80, time.Date(2026, time.June, 4, 11, 0, 0, 0, time.UTC), "old summary"),
+		mainTestIncident("inc-high-new", 80, time.Date(2026, time.June, 4, 12, 0, 0, 0, time.UTC), "new summary"),
+	}
+	for _, incident := range incidents {
+		if err := database.SaveIncident(context.Background(), incident); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := database.LinkIncidentEvents(context.Background(), "inc-high-new", []string{"evt-001"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	var output bytes.Buffer
+	if err := run([]string{
+		"triage",
+		"--db", databasePath,
+		"--min-score", "80",
+		"--limit", "1",
+		"--evidence-limit", "0",
+	}, &output); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output.String(), "INCIDENT inc-high-new") {
+		t.Fatalf("output = %q, want newest high-scoring incident first", output.String())
+	}
+	for _, unexpected := range []string{"inc-high-old", "inc-low", "evidence:"} {
+		if strings.Contains(output.String(), unexpected) {
+			t.Fatalf("output = %q, did not want %q", output.String(), unexpected)
+		}
+	}
+
+	var none bytes.Buffer
+	if err := run([]string{
+		"triage",
+		"--db", databasePath,
+		"--min-score", "101",
+	}, &none); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(none.String(), "triage incidents\n  none\n") {
+		t.Fatalf("output = %q, want no incidents", none.String())
+	}
+
+	for _, args := range [][]string{
+		{"triage", "--db", databasePath, "--min-score", "-1"},
+		{"triage", "--db", databasePath, "--evidence-limit", "-1"},
+		{"triage", "--db", databasePath, "extra"},
+	} {
+		if err := run(args, &bytes.Buffer{}); err == nil {
+			t.Fatalf("args %v: expected error", args)
+		}
+	}
+}
+
+func TestRunTriageSanitizesTerminalControlledText(t *testing.T) {
+	databaseDirectory := t.TempDir()
+	if err := os.Chmod(databaseDirectory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	databasePath := filepath.Join(databaseDirectory, "tracejutsu.db")
+	database, err := store.OpenSQLite(databasePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	event := events.Event{
+		EventID:        "evt-\x1b[2J",
+		Timestamp:      time.Date(2026, time.June, 4, 12, 0, 0, 0, time.UTC),
+		Host:           "devbox-01",
+		PID:            42,
+		ProcessName:    "curl\nforged",
+		EventType:      events.TypeExecve,
+		ExecutablePath: "/tmp/payload\rhidden",
+	}
+	if err := database.SaveEvent(context.Background(), event); err != nil {
+		t.Fatal(err)
+	}
+	incident := mainTestIncident("inc-\x1b[2J", 90, time.Date(2026, time.June, 4, 12, 0, 0, 0, time.UTC), "summary\rrewritten")
+	incident.Signals = []string{"signal\u202eoverride"}
+	incident.Timeline = []string{"timeline\tshifted"}
+	if err := database.SaveIncident(context.Background(), incident); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.LinkIncidentEvents(context.Background(), incident.IncidentID, []string{event.EventID}); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	var output bytes.Buffer
+	if err := run([]string{"triage", "--db", databasePath}, &output); err != nil {
+		t.Fatal(err)
+	}
+	if strings.ContainsRune(output.String(), '\x1b') || strings.ContainsRune(output.String(), '\u202e') {
+		t.Fatalf("output contains unsafe terminal text: %q", output.String())
+	}
+	for _, expected := range []string{
+		"inc-?[2J",
+		"summary?rewritten",
+		"signal?override",
+		"timeline?shifted",
+		"evt-?[2J execve",
+		"curl?forged",
+		"/tmp/payload?hidden",
+	} {
+		if !strings.Contains(output.String(), expected) {
+			t.Fatalf("output = %q, want substring %q", output.String(), expected)
+		}
+	}
+}
+
 func TestRunEventSummary(t *testing.T) {
 	databaseDirectory := t.TempDir()
 	if err := os.Chmod(databaseDirectory, 0o700); err != nil {
@@ -451,6 +624,7 @@ func TestInspectionCommandsRejectMissingDatabase(t *testing.T) {
 		{name: "event-summary", args: []string{"event-summary"}},
 		{name: "db-stats", args: []string{"db-stats"}},
 		{name: "incidents", args: []string{"incidents"}},
+		{name: "triage", args: []string{"triage"}},
 		{name: "show", args: []string{"show", "inc-missing"}},
 		{name: "llm", args: []string{"llm", "inc-missing"}},
 	} {
@@ -473,5 +647,37 @@ func TestInspectionCommandsRejectMissingDatabase(t *testing.T) {
 				t.Fatalf("database stat error = %v, want not exist", statErr)
 			}
 		})
+	}
+}
+
+func loadMainFixture(t *testing.T) []events.Event {
+	t.Helper()
+	fixture, err := os.Open("../../testdata/events/web-download-execute-connect.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer fixture.Close()
+
+	normalizedEvents, err := events.LoadJSON(fixture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return normalizedEvents
+}
+
+func mainTestIncident(id string, score int, start time.Time, summary string) compress.Incident {
+	return compress.Incident{
+		IncidentID: id,
+		StartTime:  start,
+		EndTime:    start.Add(time.Minute),
+		RootProcess: compress.RootProcess{
+			PID:         score,
+			ProcessName: "proc",
+		},
+		RiskScore: score,
+		Signals:   []string{"test_signal"},
+		Timeline:  []string{"test timeline"},
+		Summary:   summary,
+		LLMStatus: "pending",
 	}
 }

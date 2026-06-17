@@ -331,6 +331,36 @@ LIMIT ?`, normalizeLimit(limit))
 	return loaded, nil
 }
 
+func (store *SQLite) ListTriageIncidents(ctx context.Context, limit int, minScore int) ([]TriageIncident, error) {
+	rows, err := store.db.QueryContext(ctx, `
+SELECT i.incident_id, i.start_time, i.end_time, i.root_process_json, i.process_tree_json,
+       i.risk_score, i.signals_json, i.timeline_json, i.summary, i.llm_status, i.dropped_events,
+       COUNT(ie.event_id) AS evidence_count
+FROM incidents i
+LEFT JOIN incident_events ie ON ie.incident_id = i.incident_id
+WHERE i.risk_score >= ?
+GROUP BY i.incident_id
+ORDER BY i.risk_score DESC, i.start_time DESC, i.incident_id ASC
+LIMIT ?`, minScore, normalizeLimit(limit))
+	if err != nil {
+		return nil, fmt.Errorf("list triage incidents: %w", err)
+	}
+	defer rows.Close()
+
+	var loaded []TriageIncident
+	for rows.Next() {
+		entry, err := scanTriageIncident(rows)
+		if err != nil {
+			return nil, err
+		}
+		loaded = append(loaded, entry)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list triage incidents: %w", err)
+	}
+	return loaded, nil
+}
+
 func (store *SQLite) GetIncident(ctx context.Context, incidentID string) (compress.Incident, []events.Event, error) {
 	incident, err := scanIncident(store.db.QueryRowContext(ctx, `
 SELECT incident_id, start_time, end_time, root_process_json, process_tree_json,
@@ -541,6 +571,27 @@ func scanIncident(row scanner) (compress.Incident, error) {
 		return incident, fmt.Errorf("decode incident %q timeline: %w", incident.IncidentID, err)
 	}
 	return incident, nil
+}
+
+func scanTriageIncident(row scanner) (TriageIncident, error) {
+	var evidenceCount int64
+	incident, err := scanIncident(scannerFunc(func(dest ...any) error {
+		values := append(dest, &evidenceCount)
+		return row.Scan(values...)
+	}))
+	if err != nil {
+		return TriageIncident{}, err
+	}
+	return TriageIncident{
+		Incident:      incident,
+		EvidenceCount: evidenceCount,
+	}, nil
+}
+
+type scannerFunc func(dest ...any) error
+
+func (fn scannerFunc) Scan(dest ...any) error {
+	return fn(dest...)
 }
 
 func validateIncident(incident compress.Incident) error {

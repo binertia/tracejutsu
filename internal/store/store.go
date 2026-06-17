@@ -28,6 +28,11 @@ type EventValueSummary struct {
 	Count int64
 }
 
+type TriageIncident struct {
+	Incident      compress.Incident
+	EvidenceCount int64
+}
+
 type SQLiteStats struct {
 	JournalMode         string
 	PageSize            int64

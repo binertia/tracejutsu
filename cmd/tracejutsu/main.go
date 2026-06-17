@@ -83,6 +83,8 @@ func run(args []string, out io.Writer) error {
 		return runDBStats(args[1:], out)
 	case "incidents":
 		return runIncidents(args[1:], out)
+	case "triage":
+		return runTriage(args[1:], out)
 	case "show":
 		return runShow(args[1:], out)
 	case "llm":
@@ -637,6 +639,125 @@ func runIncidents(args []string, out io.Writer) error {
 	return nil
 }
 
+func runTriage(args []string, out io.Writer) error {
+	flags := flag.NewFlagSet("triage", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	databasePath := flags.String("db", defaultDB, "SQLite database path")
+	limit := flags.Int("limit", 10, "maximum incidents to print")
+	minScore := flags.Int("min-score", 0, "minimum deterministic risk score")
+	evidenceLimit := flags.Int("evidence-limit", 3, "maximum evidence events to preview per incident")
+	if err := flags.Parse(args); err != nil || len(flags.Args()) != 0 {
+		return errors.New("usage: tracejutsu triage [--db path] [--limit count] [--min-score score] [--evidence-limit count]")
+	}
+	if *minScore < 0 {
+		return errors.New("minimum score must be non-negative")
+	}
+	if *evidenceLimit < 0 {
+		return errors.New("evidence limit must be non-negative")
+	}
+
+	database, err := openExistingSQLite(*databasePath)
+	if err != nil {
+		return err
+	}
+	defer database.Close()
+
+	entries, err := database.ListTriageIncidents(context.Background(), *limit, *minScore)
+	if err != nil {
+		return err
+	}
+
+	fmt.Fprintln(out, "triage incidents")
+	if len(entries) == 0 {
+		fmt.Fprintln(out, "  none")
+		return nil
+	}
+	for index, entry := range entries {
+		if index > 0 {
+			fmt.Fprintln(out)
+		}
+		incident := entry.Incident
+		fmt.Fprintf(out, "INCIDENT %s  %s  score=%d  %s  llm=%s  evidence=%d\n",
+			report.TerminalText(incident.IncidentID),
+			strings.ToUpper(detect.RiskLevel(incident.RiskScore)),
+			incident.RiskScore,
+			incident.StartTime.UTC().Format("2006-01-02T15:04:05Z"),
+			report.TerminalText(incident.LLMStatus),
+			entry.EvidenceCount)
+		fmt.Fprintf(out, "summary: %s\n", report.TerminalText(incident.Summary))
+
+		writeTriageList(out, "signals", incident.Signals)
+		writeTriageList(out, "timeline", incident.Timeline)
+
+		if *evidenceLimit > 0 && entry.EvidenceCount > 0 {
+			_, linkedEvents, err := database.GetIncident(context.Background(), incident.IncidentID)
+			if err != nil {
+				return err
+			}
+			fmt.Fprintln(out, "evidence:")
+			for index, event := range linkedEvents {
+				if index >= *evidenceLimit {
+					break
+				}
+				fmt.Fprintf(out, "  %s\n", formatTriageEvent(event))
+			}
+			if int64(len(linkedEvents)) > int64(*evidenceLimit) {
+				fmt.Fprintf(out, "  ... %d more\n", int64(len(linkedEvents))-int64(*evidenceLimit))
+			}
+		}
+		fmt.Fprintf(out, "next: tracejutsu show --db %s %s\n",
+			report.TerminalText(*databasePath), report.TerminalText(incident.IncidentID))
+	}
+	return nil
+}
+
+func writeTriageList(out io.Writer, title string, entries []string) {
+	fmt.Fprintf(out, "%s:\n", title)
+	if len(entries) == 0 {
+		fmt.Fprintln(out, "  none")
+		return
+	}
+	for _, entry := range entries {
+		fmt.Fprintf(out, "  %s\n", report.TerminalText(entry))
+	}
+}
+
+func formatTriageEvent(event events.Event) string {
+	detail := triageEventDetail(event)
+	if detail == "" {
+		detail = "-"
+	}
+	return fmt.Sprintf("%s  %-16s pid=%d  %s  %s",
+		event.Timestamp.UTC().Format("2006-01-02T15:04:05Z"),
+		report.TerminalText(event.EventID+" "+string(event.EventType)),
+		event.PID,
+		report.TerminalText(event.ProcessName),
+		report.TerminalText(detail))
+}
+
+func triageEventDetail(event events.Event) string {
+	switch event.EventType {
+	case events.TypeExecve:
+		if event.ExecutablePath != "" {
+			return event.ExecutablePath
+		}
+		return strings.Join(event.CommandLine, " ")
+	case events.TypeConnect, events.TypeNetworkServer:
+		if event.RemoteAddr == "" {
+			return ""
+		}
+		if event.RemotePort == 0 {
+			return event.RemoteAddr
+		}
+		return fmt.Sprintf("%s:%d", event.RemoteAddr, event.RemotePort)
+	default:
+		if event.FilePath != "" {
+			return event.FilePath
+		}
+		return event.ExecutablePath
+	}
+}
+
 func runShow(args []string, out io.Writer) error {
 	flags := flag.NewFlagSet("show", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
@@ -738,6 +859,8 @@ Usage:
                                                        Summarize stored event volume by process and file path
   tracejutsu db-stats [--db path]                  Show SQLite table counts and file sizes
   tracejutsu incidents [--db path] [--limit count] List stored incidents
+  tracejutsu triage [--db path] [--limit count] [--min-score score] [--evidence-limit count]
+                                                       Review prioritized incidents and evidence
   tracejutsu show [--db path] <incident_id>        Show a stored incident
   tracejutsu llm [--db path] <incident_id>         Analyze a stored incident with a local LLM
   tracejutsu rules                List planned deterministic rules
