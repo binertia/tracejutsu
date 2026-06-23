@@ -57,15 +57,16 @@ func run(args []string, out io.Writer) error {
 	}
 
 	switch args[0] {
+	case "init":
+		return runInit(args[1:], out)
+	case "doctor":
+		return runDoctor(args[1:], out)
 	case "demo":
 		return runDemo(args[1:], out)
 	case "run":
 		return runLive(args[1:], out)
 	case "rules":
-		for _, ruleID := range detect.RuleIDs() {
-			fmt.Fprintln(out, ruleID)
-		}
-		return nil
+		return runRules(args[1:], out)
 	case "config":
 		payload, err := json.MarshalIndent(config.Default(), "", "  ")
 		if err != nil {
@@ -105,6 +106,32 @@ func runVersion(args []string, out io.Writer) error {
 	return nil
 }
 
+func runRules(args []string, out io.Writer) error {
+	flags := flag.NewFlagSet("rules", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	formatFlag := flags.String("format", formatText, "output format: text or json")
+	if err := flags.Parse(args); err != nil || len(flags.Args()) != 0 {
+		return errors.New("usage: tracejutsu rules [--format text|json]")
+	}
+	format, err := parseOutputFormat(*formatFlag)
+	if err != nil {
+		return err
+	}
+
+	definitions := detect.RuleDefinitions()
+	if format == formatJSON {
+		return writeJSON(out, definitions)
+	}
+	for _, definition := range definitions {
+		fmt.Fprintf(out, "%-48s score=%-3d collectors=%-48s %s\n",
+			report.TerminalText(definition.RuleID),
+			definition.ScoreImpact,
+			report.TerminalText(strings.Join(definition.Collectors, ",")),
+			report.TerminalText(definition.Description))
+	}
+	return nil
+}
+
 func runDemo(args []string, out io.Writer) error {
 	flags := flag.NewFlagSet("demo", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
@@ -133,7 +160,7 @@ func runDemo(args []string, out io.Writer) error {
 	if *databasePath != "" {
 		database, err = store.OpenSQLite(*databasePath)
 		if err != nil {
-			return err
+			return withSQLitePathHint(err, *databasePath)
 		}
 		defer database.Close()
 		if err := database.SaveEvents(context.Background(), normalizedEvents); err != nil {
@@ -227,7 +254,7 @@ func runLive(args []string, out io.Writer) (err error) {
 	if *databasePath != "" {
 		database, err = store.OpenSQLite(*databasePath)
 		if err != nil {
-			return err
+			return withSQLitePathHint(err, *databasePath)
 		}
 		defer database.Close()
 		eventQueue, err = persistqueue.NewWithConfig(database, persistqueue.Config{
@@ -442,21 +469,42 @@ func openExistingSQLite(path string) (*store.SQLite, error) {
 	if path != ":memory:" {
 		if _, err := os.Lstat(path); err != nil {
 			if errors.Is(err, os.ErrNotExist) {
-				return nil, fmt.Errorf("SQLite database does not exist: %q", path)
+				return nil, withSQLitePathHint(fmt.Errorf("SQLite database does not exist: %q", path), path)
 			}
 			return nil, fmt.Errorf("inspect SQLite database path: %w", err)
 		}
 	}
-	return store.OpenSQLite(path)
+	database, err := store.OpenSQLite(path)
+	if err != nil {
+		return nil, withSQLitePathHint(err, path)
+	}
+	return database, nil
 }
 
 func runEvents(args []string, out io.Writer) error {
 	flags := flag.NewFlagSet("events", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	databasePath := flags.String("db", defaultDB, "SQLite database path")
+	databasePath := flags.String("db", defaultDatabasePath(), "SQLite database path")
 	limit := flags.Int("limit", 50, "maximum events to print")
+	eventType := flags.String("type", "", "event type to list")
+	processName := flags.String("process", "", "process name to list")
+	pid := flags.Int("pid", 0, "process ID to list")
+	containerID := flags.String("container-id", "", "container ID to list")
+	since := flags.String("since", "", "only include events at or after this RFC3339 time")
+	until := flags.String("until", "", "only include events at or before this RFC3339 time")
 	if err := flags.Parse(args); err != nil || len(flags.Args()) != 0 {
-		return errors.New("usage: tracejutsu events [--db path] [--limit count]")
+		return errors.New("usage: tracejutsu events [--db path] [--limit count] [--type event_type] [--process name] [--pid pid] [--container-id id] [--since time] [--until time]")
+	}
+	if *pid < 0 {
+		return errors.New("pid must be non-negative")
+	}
+	sinceTime, err := parseOptionalTime(*since, "--since")
+	if err != nil {
+		return err
+	}
+	untilTime, err := parseOptionalTime(*until, "--until")
+	if err != nil {
+		return err
 	}
 
 	database, err := openExistingSQLite(*databasePath)
@@ -465,7 +513,15 @@ func runEvents(args []string, out io.Writer) error {
 	}
 	defer database.Close()
 
-	normalizedEvents, err := database.ListEvents(context.Background(), *limit)
+	normalizedEvents, err := database.ListEventsFiltered(context.Background(), store.EventFilter{
+		Limit:       *limit,
+		EventType:   *eventType,
+		ProcessName: *processName,
+		PID:         *pid,
+		ContainerID: *containerID,
+		Since:       sinceTime,
+		Until:       untilTime,
+	})
 	if err != nil {
 		return err
 	}
@@ -481,11 +537,16 @@ func runEvents(args []string, out io.Writer) error {
 func runEventSummary(args []string, out io.Writer) error {
 	flags := flag.NewFlagSet("event-summary", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	databasePath := flags.String("db", defaultDB, "SQLite database path")
+	databasePath := flags.String("db", defaultDatabasePath(), "SQLite database path")
 	eventType := flags.String("type", "", "event type to summarize, for example file_write")
 	limit := flags.Int("limit", 10, "maximum rows per summary section")
+	formatFlag := flags.String("format", formatText, "output format: text or json")
 	if err := flags.Parse(args); err != nil || len(flags.Args()) != 0 {
-		return errors.New("usage: tracejutsu event-summary [--db path] [--type event_type] [--limit count]")
+		return errors.New("usage: tracejutsu event-summary [--db path] [--type event_type] [--limit count] [--format text|json]")
+	}
+	format, err := parseOutputFormat(*formatFlag)
+	if err != nil {
+		return err
 	}
 
 	database, err := openExistingSQLite(*databasePath)
@@ -501,6 +562,18 @@ func runEventSummary(args []string, out io.Writer) error {
 	paths, err := database.TopEventPaths(context.Background(), *eventType, *limit)
 	if err != nil {
 		return err
+	}
+
+	if format == formatJSON {
+		return writeJSON(out, struct {
+			EventType    string                      `json:"event_type"`
+			TopProcesses []store.EventProcessSummary `json:"top_processes"`
+			TopFilePaths []store.EventValueSummary   `json:"top_file_paths"`
+		}{
+			EventType:    *eventType,
+			TopProcesses: processes,
+			TopFilePaths: paths,
+		})
 	}
 
 	if *eventType == "" {
@@ -536,9 +609,14 @@ func runEventSummary(args []string, out io.Writer) error {
 func runDBStats(args []string, out io.Writer) error {
 	flags := flag.NewFlagSet("db-stats", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	databasePath := flags.String("db", defaultDB, "SQLite database path")
+	databasePath := flags.String("db", defaultDatabasePath(), "SQLite database path")
+	formatFlag := flags.String("format", formatText, "output format: text or json")
 	if err := flags.Parse(args); err != nil || len(flags.Args()) != 0 {
-		return errors.New("usage: tracejutsu db-stats [--db path]")
+		return errors.New("usage: tracejutsu db-stats [--db path] [--format text|json]")
+	}
+	format, err := parseOutputFormat(*formatFlag)
+	if err != nil {
+		return err
 	}
 	if *databasePath == ":memory:" {
 		return errors.New("db-stats requires a filesystem SQLite database")
@@ -565,6 +643,22 @@ func runDBStats(args []string, out io.Writer) error {
 	shmBytes, err := optionalRegularFileSize(*databasePath + "-shm")
 	if err != nil {
 		return err
+	}
+
+	if format == formatJSON {
+		return writeJSON(out, struct {
+			Path          string `json:"path"`
+			DatabaseBytes int64  `json:"database_bytes"`
+			WALBytes      int64  `json:"wal_bytes"`
+			SHMBytes      int64  `json:"shm_bytes"`
+			store.SQLiteStats
+		}{
+			Path:          *databasePath,
+			DatabaseBytes: databaseBytes,
+			WALBytes:      walBytes,
+			SHMBytes:      shmBytes,
+			SQLiteStats:   stats,
+		})
 	}
 
 	fmt.Fprintln(out, "database stats")
@@ -612,10 +706,26 @@ func optionalRegularFileSize(path string) (int64, error) {
 func runIncidents(args []string, out io.Writer) error {
 	flags := flag.NewFlagSet("incidents", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	databasePath := flags.String("db", defaultDB, "SQLite database path")
+	databasePath := flags.String("db", defaultDatabasePath(), "SQLite database path")
 	limit := flags.Int("limit", 50, "maximum incidents to print")
+	llmStatus := flags.String("llm-status", "", "LLM status to list, for example pending or complete")
+	since := flags.String("since", "", "only include incidents at or after this RFC3339 time")
+	until := flags.String("until", "", "only include incidents at or before this RFC3339 time")
+	formatFlag := flags.String("format", formatText, "output format: text or json")
 	if err := flags.Parse(args); err != nil || len(flags.Args()) != 0 {
-		return errors.New("usage: tracejutsu incidents [--db path] [--limit count]")
+		return errors.New("usage: tracejutsu incidents [--db path] [--limit count] [--llm-status status] [--since time] [--until time] [--format text|json]")
+	}
+	format, err := parseOutputFormat(*formatFlag)
+	if err != nil {
+		return err
+	}
+	sinceTime, err := parseOptionalTime(*since, "--since")
+	if err != nil {
+		return err
+	}
+	untilTime, err := parseOptionalTime(*until, "--until")
+	if err != nil {
+		return err
 	}
 
 	database, err := openExistingSQLite(*databasePath)
@@ -624,9 +734,17 @@ func runIncidents(args []string, out io.Writer) error {
 	}
 	defer database.Close()
 
-	incidents, err := database.ListIncidents(context.Background(), *limit)
+	incidents, err := database.ListIncidentsFiltered(context.Background(), store.IncidentFilter{
+		Limit:     *limit,
+		LLMStatus: *llmStatus,
+		Since:     sinceTime,
+		Until:     untilTime,
+	})
 	if err != nil {
 		return err
+	}
+	if format == formatJSON {
+		return writeJSON(out, incidents)
 	}
 	for _, incident := range incidents {
 		fmt.Fprintf(out, "%s  %-8s score=%-3d  %s  %s\n",
@@ -642,18 +760,34 @@ func runIncidents(args []string, out io.Writer) error {
 func runTriage(args []string, out io.Writer) error {
 	flags := flag.NewFlagSet("triage", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	databasePath := flags.String("db", defaultDB, "SQLite database path")
+	databasePath := flags.String("db", defaultDatabasePath(), "SQLite database path")
 	limit := flags.Int("limit", 10, "maximum incidents to print")
 	minScore := flags.Int("min-score", 0, "minimum deterministic risk score")
 	evidenceLimit := flags.Int("evidence-limit", 3, "maximum evidence events to preview per incident")
+	llmStatus := flags.String("llm-status", "", "LLM status to list, for example pending or complete")
+	since := flags.String("since", "", "only include incidents at or after this RFC3339 time")
+	until := flags.String("until", "", "only include incidents at or before this RFC3339 time")
+	formatFlag := flags.String("format", formatText, "output format: text or json")
 	if err := flags.Parse(args); err != nil || len(flags.Args()) != 0 {
-		return errors.New("usage: tracejutsu triage [--db path] [--limit count] [--min-score score] [--evidence-limit count]")
+		return errors.New("usage: tracejutsu triage [--db path] [--limit count] [--min-score score] [--evidence-limit count] [--llm-status status] [--since time] [--until time] [--format text|json]")
 	}
 	if *minScore < 0 {
 		return errors.New("minimum score must be non-negative")
 	}
 	if *evidenceLimit < 0 {
 		return errors.New("evidence limit must be non-negative")
+	}
+	format, err := parseOutputFormat(*formatFlag)
+	if err != nil {
+		return err
+	}
+	sinceTime, err := parseOptionalTime(*since, "--since")
+	if err != nil {
+		return err
+	}
+	untilTime, err := parseOptionalTime(*until, "--until")
+	if err != nil {
+		return err
 	}
 
 	database, err := openExistingSQLite(*databasePath)
@@ -662,9 +796,40 @@ func runTriage(args []string, out io.Writer) error {
 	}
 	defer database.Close()
 
-	entries, err := database.ListTriageIncidents(context.Background(), *limit, *minScore)
+	entries, err := database.ListTriageIncidentsFiltered(context.Background(), store.IncidentFilter{
+		Limit:     *limit,
+		MinScore:  *minScore,
+		LLMStatus: *llmStatus,
+		Since:     sinceTime,
+		Until:     untilTime,
+	})
 	if err != nil {
 		return err
+	}
+
+	if format == formatJSON {
+		output := make([]struct {
+			store.TriageIncident
+			EvidenceEvents []events.Event `json:"evidence_events,omitempty"`
+		}, 0, len(entries))
+		for _, entry := range entries {
+			item := struct {
+				store.TriageIncident
+				EvidenceEvents []events.Event `json:"evidence_events,omitempty"`
+			}{TriageIncident: entry}
+			if *evidenceLimit > 0 && entry.EvidenceCount > 0 {
+				_, linkedEvents, err := database.GetIncident(context.Background(), entry.Incident.IncidentID)
+				if err != nil {
+					return err
+				}
+				if len(linkedEvents) > *evidenceLimit {
+					linkedEvents = linkedEvents[:*evidenceLimit]
+				}
+				item.EvidenceEvents = linkedEvents
+			}
+			output = append(output, item)
+		}
+		return writeJSON(out, output)
 	}
 
 	fmt.Fprintln(out, "triage incidents")
@@ -761,9 +926,18 @@ func triageEventDetail(event events.Event) string {
 func runShow(args []string, out io.Writer) error {
 	flags := flag.NewFlagSet("show", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	databasePath := flags.String("db", defaultDB, "SQLite database path")
+	databasePath := flags.String("db", defaultDatabasePath(), "SQLite database path")
+	evidenceLimit := flags.Int("evidence-limit", 10, "maximum evidence events to preview; 0 hides the preview")
+	formatFlag := flags.String("format", formatText, "output format: text or json")
 	if err := flags.Parse(args); err != nil || len(flags.Args()) != 1 {
-		return errors.New("usage: tracejutsu show [--db path] <incident_id>")
+		return errors.New("usage: tracejutsu show [--db path] [--evidence-limit count] [--format text|json] <incident_id>")
+	}
+	if *evidenceLimit < 0 {
+		return errors.New("evidence limit must be non-negative")
+	}
+	format, err := parseOutputFormat(*formatFlag)
+	if err != nil {
+		return err
 	}
 
 	database, err := openExistingSQLite(*databasePath)
@@ -776,16 +950,42 @@ func runShow(args []string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
+	llmReport, err := database.GetLLMReport(context.Background(), incident.IncidentID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	if format == formatJSON {
+		var reportValue *store.LLMReport
+		if err == nil {
+			reportValue = &llmReport
+		}
+		return writeJSON(out, struct {
+			Incident       compress.Incident `json:"incident"`
+			EvidenceEvents []events.Event    `json:"evidence_events"`
+			LLMReport      *store.LLMReport  `json:"llm_report,omitempty"`
+		}{
+			Incident:       incident,
+			EvidenceEvents: linkedEvents,
+			LLMReport:      reportValue,
+		})
+	}
 	if err := report.Write(out, incident); err != nil {
 		return err
 	}
 	fmt.Fprintf(out, "\nEvidence events: %d\n", len(linkedEvents))
-	llmReport, err := database.GetLLMReport(context.Background(), incident.IncidentID)
+	if *evidenceLimit > 0 {
+		for index, event := range linkedEvents {
+			if index >= *evidenceLimit {
+				break
+			}
+			fmt.Fprintf(out, "  %s\n", formatTriageEvent(event))
+		}
+		if len(linkedEvents) > *evidenceLimit {
+			fmt.Fprintf(out, "  ... %d more\n", len(linkedEvents)-*evidenceLimit)
+		}
+	}
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
-	}
-	if err != nil {
-		return err
 	}
 	fmt.Fprintln(out)
 	return report.WriteLLM(out, incident, llmReport.Report)
@@ -800,13 +1000,29 @@ func runLLM(args []string, out io.Writer) error {
 
 	flags := flag.NewFlagSet("llm", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	databasePath := flags.String("db", defaultDB, "SQLite database path")
+	databasePath := flags.String("db", defaultDatabasePath(), "SQLite database path")
 	endpoint := flags.String("endpoint", defaults.LLM.Endpoint, "llama-server-compatible HTTP endpoint")
 	model := flags.String("model", defaults.LLM.Model, "local model identifier")
 	timeout := flags.Duration("timeout", defaultTimeout, "LLM request timeout")
 	remoteEndpointOptIn := flags.Bool("allow-remote-endpoint", defaults.LLM.RemoteEndpointOptIn, "allow a non-loopback LLM endpoint")
 	preserveRawResponse := flags.Bool("preserve-raw-response", defaults.LLM.PreserveRawResponse, "store raw LLM output for debugging")
-	if err := flags.Parse(args); err != nil || len(flags.Args()) != 1 {
+	allPending := flags.Bool("all-pending", false, "analyze pending incidents in priority order")
+	minScore := flags.Int("min-score", 0, "minimum deterministic risk score for --all-pending")
+	limit := flags.Int("limit", 10, "maximum pending incidents for --all-pending")
+	if err := flags.Parse(args); err != nil {
+		return errors.New("usage: tracejutsu llm [--db path] [--endpoint url] [--model name] [--timeout duration] [--allow-remote-endpoint] [--preserve-raw-response] [--all-pending --min-score score --limit count] [incident_id]")
+	}
+	if *minScore < 0 {
+		return errors.New("minimum score must be non-negative")
+	}
+	if *limit <= 0 {
+		return errors.New("limit must be positive")
+	}
+	if *allPending {
+		if len(flags.Args()) != 0 {
+			return errors.New("usage: tracejutsu llm --all-pending [--db path] [--endpoint url] [--model name] [--timeout duration] [--allow-remote-endpoint] [--preserve-raw-response] [--min-score score] [--limit count]")
+		}
+	} else if len(flags.Args()) != 1 {
 		return errors.New("usage: tracejutsu llm [--db path] [--endpoint url] [--model name] [--timeout duration] [--allow-remote-endpoint] [--preserve-raw-response] <incident_id>")
 	}
 
@@ -816,10 +1032,6 @@ func runLLM(args []string, out io.Writer) error {
 	}
 	defer database.Close()
 
-	incident, _, err := database.GetIncident(context.Background(), flags.Args()[0])
-	if err != nil {
-		return err
-	}
 	client, err := newLLMClient(llm.HTTPConfig{
 		Endpoint:            *endpoint,
 		Model:               *model,
@@ -831,11 +1043,55 @@ func runLLM(args []string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	analysis, err := client.Analyze(context.Background(), incident)
+
+	if *allPending {
+		return runLLMBatch(out, database, client, *limit, *minScore)
+	}
+
+	incident, _, err := database.GetIncident(context.Background(), flags.Args()[0])
 	if err != nil {
 		return err
 	}
-	if err := database.SaveLLMReport(context.Background(), store.LLMReport{
+	return analyzeAndWriteLLM(context.Background(), out, database, client, incident)
+}
+
+func runLLMBatch(out io.Writer, database *store.SQLite, client llm.Client, limit int, minScore int) error {
+	entries, err := database.ListTriageIncidentsFiltered(context.Background(), store.IncidentFilter{
+		Limit:     limit,
+		MinScore:  minScore,
+		LLMStatus: "pending",
+	})
+	if err != nil {
+		return err
+	}
+	complete := 0
+	failed := 0
+	for index, entry := range entries {
+		if index > 0 {
+			fmt.Fprintln(out)
+		}
+		if err := analyzeAndWriteLLM(context.Background(), out, database, client, entry.Incident); err != nil {
+			failed++
+			fmt.Fprintf(out, "llm %s failed: %s\n",
+				report.TerminalText(entry.Incident.IncidentID),
+				report.TerminalText(err.Error()))
+			continue
+		}
+		complete++
+	}
+	fmt.Fprintf(out, "\nllm batch: processed=%d complete=%d failed=%d\n", len(entries), complete, failed)
+	if failed > 0 {
+		return fmt.Errorf("llm batch failed for %d incident(s)", failed)
+	}
+	return nil
+}
+
+func analyzeAndWriteLLM(ctx context.Context, out io.Writer, database *store.SQLite, client llm.Client, incident compress.Incident) error {
+	analysis, err := client.Analyze(ctx, incident)
+	if err != nil {
+		return err
+	}
+	if err := database.SaveLLMReport(ctx, store.LLMReport{
 		IncidentID:  incident.IncidentID,
 		CreatedAt:   time.Now().UTC(),
 		Model:       analysis.Model,
@@ -851,19 +1107,28 @@ func writeUsage(out io.Writer) {
 	fmt.Fprintln(out, `tracejutsu: local-first runtime security analyst
 
 Usage:
+  tracejutsu init [--db path]                       Create a private SQLite state database
+  tracejutsu doctor [--db path] [--service]         Check local setup and database health
   tracejutsu demo [--db path] [fixture.json]       Run the fake-event incident pipeline
   tracejutsu run [--db path] [--flush-after time] [--stats-interval time] [--event-buffer count] [--persist-buffer count] [--persist-batch-size count] [--ring-buffer-size bytes] [--collectors list] [--file-write-min-bytes bytes] [--quiet-events]
                                                        Stream live runtime events and detect incidents (Linux amd64/arm64, root)
-  tracejutsu events [--db path] [--limit count]    List stored normalized events
-  tracejutsu event-summary [--db path] [--type event_type] [--limit count]
+  tracejutsu events [--db path] [--limit count] [--type event_type] [--process name] [--pid pid] [--container-id id] [--since time] [--until time]
+                                                       List stored normalized events
+  tracejutsu event-summary [--db path] [--type event_type] [--limit count] [--format text|json]
                                                        Summarize stored event volume by process and file path
-  tracejutsu db-stats [--db path]                  Show SQLite table counts and file sizes
-  tracejutsu incidents [--db path] [--limit count] List stored incidents
-  tracejutsu triage [--db path] [--limit count] [--min-score score] [--evidence-limit count]
+  tracejutsu db-stats [--db path] [--format text|json]
+                                                       Show SQLite table counts and file sizes
+  tracejutsu incidents [--db path] [--limit count] [--llm-status status] [--since time] [--until time] [--format text|json]
+                                                       List stored incidents
+  tracejutsu triage [--db path] [--limit count] [--min-score score] [--evidence-limit count] [--llm-status status] [--since time] [--until time] [--format text|json]
                                                        Review prioritized incidents and evidence
-  tracejutsu show [--db path] <incident_id>        Show a stored incident
+  tracejutsu show [--db path] [--evidence-limit count] [--format text|json] <incident_id>
+                                                       Show a stored incident
   tracejutsu llm [--db path] <incident_id>         Analyze a stored incident with a local LLM
-  tracejutsu rules                List planned deterministic rules
+  tracejutsu llm [--db path] --all-pending [--min-score score] [--limit count]
+                                                       Analyze pending incidents with a local LLM
+  tracejutsu rules [--format text|json]
+                                                       List deterministic rules
   tracejutsu config               Print local-first default config
   tracejutsu version              Print build version metadata`)
 }

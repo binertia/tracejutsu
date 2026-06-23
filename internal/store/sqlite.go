@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -225,13 +226,49 @@ func (store *SQLite) SaveIncidentWithEvents(ctx context.Context, incident compre
 }
 
 func (store *SQLite) ListEvents(ctx context.Context, limit int) ([]events.Event, error) {
-	rows, err := store.db.QueryContext(ctx, `
+	return store.ListEventsFiltered(ctx, EventFilter{Limit: limit})
+}
+
+func (store *SQLite) ListEventsFiltered(ctx context.Context, filter EventFilter) ([]events.Event, error) {
+	query := `
 SELECT event_id, timestamp, host, container_id, container_name, pid, ppid, uid,
        process_name, parent_process_name, event_type, executable_path,
        command_line_json, cwd, file_path, remote_addr, remote_port, metadata_json
 FROM events
-ORDER BY timestamp ASC, event_id ASC
-LIMIT ?`, normalizeLimit(limit))
+`
+	clauses := make([]string, 0, 6)
+	args := make([]any, 0, 7)
+	if filter.EventType != "" {
+		clauses = append(clauses, "event_type = ?")
+		args = append(args, filter.EventType)
+	}
+	if filter.ProcessName != "" {
+		clauses = append(clauses, "process_name = ?")
+		args = append(args, filter.ProcessName)
+	}
+	if filter.PID > 0 {
+		clauses = append(clauses, "pid = ?")
+		args = append(args, filter.PID)
+	}
+	if filter.ContainerID != "" {
+		clauses = append(clauses, "container_id = ?")
+		args = append(args, filter.ContainerID)
+	}
+	if !filter.Since.IsZero() {
+		clauses = append(clauses, "timestamp >= ?")
+		args = append(args, formatTime(filter.Since))
+	}
+	if !filter.Until.IsZero() {
+		clauses = append(clauses, "timestamp <= ?")
+		args = append(args, formatTime(filter.Until))
+	}
+	if len(clauses) > 0 {
+		query += "WHERE " + strings.Join(clauses, " AND ") + "\n"
+	}
+	query += "ORDER BY timestamp ASC, event_id ASC\nLIMIT ?"
+	args = append(args, normalizeLimit(filter.Limit))
+
+	rows, err := store.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list events: %w", err)
 	}
@@ -306,12 +343,23 @@ LIMIT ?`, eventType, eventType, normalizeLimit(limit))
 }
 
 func (store *SQLite) ListIncidents(ctx context.Context, limit int) ([]compress.Incident, error) {
-	rows, err := store.db.QueryContext(ctx, `
+	return store.ListIncidentsFiltered(ctx, IncidentFilter{Limit: limit})
+}
+
+func (store *SQLite) ListIncidentsFiltered(ctx context.Context, filter IncidentFilter) ([]compress.Incident, error) {
+	query := `
 SELECT incident_id, start_time, end_time, root_process_json, process_tree_json,
        risk_score, signals_json, timeline_json, summary, llm_status, dropped_events
 FROM incidents
-ORDER BY start_time DESC, incident_id ASC
-LIMIT ?`, normalizeLimit(limit))
+`
+	clauses, args := incidentFilterClauses(filter)
+	if len(clauses) > 0 {
+		query += "WHERE " + strings.Join(clauses, " AND ") + "\n"
+	}
+	query += "ORDER BY start_time DESC, incident_id ASC\nLIMIT ?"
+	args = append(args, normalizeLimit(filter.Limit))
+
+	rows, err := store.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list incidents: %w", err)
 	}
@@ -332,16 +380,28 @@ LIMIT ?`, normalizeLimit(limit))
 }
 
 func (store *SQLite) ListTriageIncidents(ctx context.Context, limit int, minScore int) ([]TriageIncident, error) {
-	rows, err := store.db.QueryContext(ctx, `
+	return store.ListTriageIncidentsFiltered(ctx, IncidentFilter{Limit: limit, MinScore: minScore})
+}
+
+func (store *SQLite) ListTriageIncidentsFiltered(ctx context.Context, filter IncidentFilter) ([]TriageIncident, error) {
+	query := `
 SELECT i.incident_id, i.start_time, i.end_time, i.root_process_json, i.process_tree_json,
        i.risk_score, i.signals_json, i.timeline_json, i.summary, i.llm_status, i.dropped_events,
        COUNT(ie.event_id) AS evidence_count
 FROM incidents i
 LEFT JOIN incident_events ie ON ie.incident_id = i.incident_id
-WHERE i.risk_score >= ?
+`
+	clauses, args := incidentFilterClauses(filter)
+	if len(clauses) > 0 {
+		query += "WHERE " + strings.Join(prefixClauses("i.", clauses), " AND ") + "\n"
+	}
+	query += `
 GROUP BY i.incident_id
 ORDER BY i.risk_score DESC, i.start_time DESC, i.incident_id ASC
-LIMIT ?`, minScore, normalizeLimit(limit))
+LIMIT ?`
+	args = append(args, normalizeLimit(filter.Limit))
+
+	rows, err := store.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list triage incidents: %w", err)
 	}
@@ -359,6 +419,45 @@ LIMIT ?`, minScore, normalizeLimit(limit))
 		return nil, fmt.Errorf("list triage incidents: %w", err)
 	}
 	return loaded, nil
+}
+
+func incidentFilterClauses(filter IncidentFilter) ([]string, []any) {
+	clauses := make([]string, 0, 4)
+	args := make([]any, 0, 5)
+	if filter.MinScore > 0 {
+		clauses = append(clauses, "risk_score >= ?")
+		args = append(args, filter.MinScore)
+	}
+	if filter.LLMStatus != "" {
+		clauses = append(clauses, "llm_status = ?")
+		args = append(args, filter.LLMStatus)
+	}
+	if !filter.Since.IsZero() {
+		clauses = append(clauses, "start_time >= ?")
+		args = append(args, formatTime(filter.Since))
+	}
+	if !filter.Until.IsZero() {
+		clauses = append(clauses, "start_time <= ?")
+		args = append(args, formatTime(filter.Until))
+	}
+	return clauses, args
+}
+
+func prefixClauses(prefix string, clauses []string) []string {
+	prefixed := make([]string, 0, len(clauses))
+	for _, clause := range clauses {
+		switch {
+		case strings.HasPrefix(clause, "risk_score"):
+			prefixed = append(prefixed, prefix+clause)
+		case strings.HasPrefix(clause, "llm_status"):
+			prefixed = append(prefixed, prefix+clause)
+		case strings.HasPrefix(clause, "start_time"):
+			prefixed = append(prefixed, prefix+clause)
+		default:
+			prefixed = append(prefixed, clause)
+		}
+	}
+	return prefixed
 }
 
 func (store *SQLite) GetIncident(ctx context.Context, incidentID string) (compress.Incident, []events.Event, error) {

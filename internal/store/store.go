@@ -10,39 +10,57 @@ import (
 )
 
 type LLMReport struct {
-	IncidentID  string
-	CreatedAt   time.Time
-	Model       string
-	Report      llm.Report
-	RawResponse string
+	IncidentID  string     `json:"incident_id"`
+	CreatedAt   time.Time  `json:"created_at"`
+	Model       string     `json:"model"`
+	Report      llm.Report `json:"report"`
+	RawResponse string     `json:"raw_response,omitempty"`
 }
 
 type EventProcessSummary struct {
-	ProcessName    string
-	ExecutablePath string
-	Count          int64
+	ProcessName    string `json:"process_name"`
+	ExecutablePath string `json:"executable_path"`
+	Count          int64  `json:"count"`
 }
 
 type EventValueSummary struct {
-	Value string
-	Count int64
+	Value string `json:"value"`
+	Count int64  `json:"count"`
 }
 
 type TriageIncident struct {
-	Incident      compress.Incident
-	EvidenceCount int64
+	Incident      compress.Incident `json:"incident"`
+	EvidenceCount int64             `json:"evidence_count"`
+}
+
+type EventFilter struct {
+	Limit       int
+	EventType   string
+	ProcessName string
+	PID         int
+	ContainerID string
+	Since       time.Time
+	Until       time.Time
+}
+
+type IncidentFilter struct {
+	Limit     int
+	MinScore  int
+	LLMStatus string
+	Since     time.Time
+	Until     time.Time
 }
 
 type SQLiteStats struct {
-	JournalMode         string
-	PageSize            int64
-	PageCount           int64
-	FreelistCount       int64
-	EventCount          int64
-	IncidentCount       int64
-	IncidentEventCount  int64
-	LLMReportCount      int64
-	ApproxDatabaseBytes int64
+	JournalMode         string `json:"journal_mode"`
+	PageSize            int64  `json:"page_size"`
+	PageCount           int64  `json:"page_count"`
+	FreelistCount       int64  `json:"freelist_count"`
+	EventCount          int64  `json:"events"`
+	IncidentCount       int64  `json:"incidents"`
+	IncidentEventCount  int64  `json:"incident_event_links"`
+	LLMReportCount      int64  `json:"llm_reports"`
+	ApproxDatabaseBytes int64  `json:"approx_database_bytes"`
 }
 
 // Store is intentionally small so SQLite can be added without coupling the

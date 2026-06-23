@@ -1,6 +1,6 @@
 # Tracejutsu Handoff
 
-Updated: 2026-06-08
+Updated: 2026-06-23
 
 > **Release scope:** The `v0.1.0` release is targeting **Debian 13 (trixie) amd64**
 > only. Validation on other distributions is no longer being pursued for this
@@ -26,6 +26,12 @@ prints periodic stats every minute.
 The service unit was further hardened with device isolation, native syscall ABI
 restriction, namespace creation blocking, hostname protection,
 writable-executable memory denial, and IPC cleanup.
+The CLI now has operator workflow helpers for personal-host use:
+`tracejutsu init` creates a private SQLite state path, `tracejutsu doctor`
+checks local database and optional systemd service health, database-backed
+commands default to `TRACEJUTSU_DB`, `$XDG_STATE_HOME/tracejutsu/tracejutsu.db`,
+or `$HOME/.local/state/tracejutsu/tracejutsu.db`, and incident/event review
+commands support filters plus JSON output for local tooling.
 
 Root-only eBPF smoke tests passed on a capable Linux amd64 host on 2026-06-03,
 including after connect, file-write, and chmod syscall-exit correlation was
@@ -368,6 +374,17 @@ Implemented deterministic rules:
 - `tracejutsu db-stats` reports SQLite table counts, page/freelist stats,
   journal mode, and database/WAL/SHM file sizes for operations and retention
   planning.
+- `tracejutsu init` creates private state directories and initializes SQLite.
+  `tracejutsu doctor` performs non-creating setup checks for OS/arch, database
+  path privacy, sidecar privacy, read-only journal mode, and optional systemd
+  service state.
+- `tracejutsu events`, `incidents`, and `triage` support focused local review
+  filters. Time filters use RFC3339 timestamps. `show`, `triage`, `incidents`,
+  `db-stats`, and `event-summary` can emit JSON with `--format json`.
+- `tracejutsu llm --all-pending --min-score N --limit N` processes pending
+  incidents sequentially in deterministic priority order. Successful reports
+  mark incidents complete; failures leave incidents pending and make the batch
+  command return nonzero after printing a summary.
 - `tracejutsu run --event-buffer`, `--persist-buffer`,
   `--persist-batch-size`, and `--ring-buffer-size` tune burst capacity.
   `--collectors` narrows live collection to a comma-separated subset of
@@ -498,19 +515,19 @@ collector_correlation_dropped=execve:0,connect:0,file_write:0,chmod:0
 Run the non-root fake pipeline:
 
 ```sh
-mkdir -p "$HOME/.local/state/tracejutsu"
-chmod 700 "$HOME/.local/state/tracejutsu"
-DB="$HOME/.local/state/tracejutsu/tracejutsu.db"
-go run ./cmd/tracejutsu demo --db "$DB"
-go run ./cmd/tracejutsu show --db "$DB" inc-evt-001
+export TRACEJUTSU_DB="$HOME/.local/state/tracejutsu/tracejutsu.db"
+go run ./cmd/tracejutsu init
+go run ./cmd/tracejutsu demo --db "$TRACEJUTSU_DB"
+go run ./cmd/tracejutsu triage
+go run ./cmd/tracejutsu show inc-evt-001
 ```
 
 Run local LLM analysis:
 
 ```sh
 llama-server --model /path/to/model.gguf --port 8080
-go run ./cmd/tracejutsu llm --db "$DB" inc-evt-001
-go run ./cmd/tracejutsu show --db "$DB" inc-evt-001
+go run ./cmd/tracejutsu llm inc-evt-001
+go run ./cmd/tracejutsu show inc-evt-001
 ```
 
 ## Recommended Next Task

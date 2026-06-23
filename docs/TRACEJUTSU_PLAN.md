@@ -449,14 +449,21 @@ Start with readable CLI output. Introduce Bubble Tea only when interactive navig
 Initial commands:
 
 ```text
+tracejutsu init
+tracejutsu doctor
 tracejutsu run
 tracejutsu events
 tracejutsu incidents
+tracejutsu triage
 tracejutsu show <incident_id>
 tracejutsu llm <incident_id>
-tracejutsu rules
+tracejutsu rules [--format text|json]
 tracejutsu config
 ```
+
+Current CLI behavior also includes JSON output for stored incident/stat summary
+commands, event and incident filters for local review, and batch LLM analysis
+for pending incidents.
 
 Example terminal output:
 

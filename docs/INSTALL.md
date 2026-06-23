@@ -83,6 +83,15 @@ Confirm the installed binary runs:
 /usr/local/bin/tracejutsu version
 ```
 
+For manual CLI use outside the packaged service, initialize the default private
+state path or set `TRACEJUTSU_DB` first:
+
+```sh
+export TRACEJUTSU_DB="$HOME/.local/state/tracejutsu/tracejutsu.db"
+/usr/local/bin/tracejutsu init
+/usr/local/bin/tracejutsu doctor
+```
+
 If using the generated Debian package, install it with:
 
 ```sh
@@ -186,15 +195,18 @@ Check service health and logs:
 ```sh
 sudo systemctl status tracejutsu.service
 sudo journalctl -u tracejutsu.service -f
+sudo /usr/local/bin/tracejutsu doctor --db /var/lib/tracejutsu/tracejutsu.db --service
 ```
 
 Inspect stored data:
 
 ```sh
 sudo /usr/local/bin/tracejutsu events --db /var/lib/tracejutsu/tracejutsu.db
+sudo /usr/local/bin/tracejutsu events --db /var/lib/tracejutsu/tracejutsu.db --type execve --limit 20
 sudo /usr/local/bin/tracejutsu event-summary --db /var/lib/tracejutsu/tracejutsu.db --type file_write
-sudo /usr/local/bin/tracejutsu db-stats --db /var/lib/tracejutsu/tracejutsu.db
+sudo /usr/local/bin/tracejutsu db-stats --db /var/lib/tracejutsu/tracejutsu.db --format json
 sudo /usr/local/bin/tracejutsu incidents --db /var/lib/tracejutsu/tracejutsu.db
+sudo /usr/local/bin/tracejutsu triage --db /var/lib/tracejutsu/tracejutsu.db --min-score 60
 sudo /usr/local/bin/tracejutsu show --db /var/lib/tracejutsu/tracejutsu.db <incident_id>
 ```
 
@@ -210,6 +222,12 @@ stored incident after a local `llama-server` compatible endpoint is available:
 llama-server --model /path/to/model.gguf --port 8080
 sudo /usr/local/bin/tracejutsu llm --db /var/lib/tracejutsu/tracejutsu.db <incident_id>
 sudo /usr/local/bin/tracejutsu show --db /var/lib/tracejutsu/tracejutsu.db <incident_id>
+```
+
+To process pending incidents in priority order:
+
+```sh
+sudo /usr/local/bin/tracejutsu llm --db /var/lib/tracejutsu/tracejutsu.db --all-pending --min-score 60 --limit 10
 ```
 
 Remote LLM endpoints are rejected unless `--allow-remote-endpoint` is supplied.

@@ -46,24 +46,26 @@ install Go `1.26.4` or newer.
 
 ## Save Demo Results
 
-Use a private SQLite database path:
+Initialize a private SQLite database path, then reuse it through
+`TRACEJUTSU_DB`:
 
 ```sh
-mkdir -p "$HOME/.local/state/tracejutsu"
-chmod 700 "$HOME/.local/state/tracejutsu"
-DB="$HOME/.local/state/tracejutsu/tracejutsu.db"
+export TRACEJUTSU_DB="$HOME/.local/state/tracejutsu/tracejutsu.db"
 
-go run ./cmd/tracejutsu demo --db "$DB"
-go run ./cmd/tracejutsu incidents --db "$DB"
-go run ./cmd/tracejutsu show --db "$DB" inc-evt-001
+go run ./cmd/tracejutsu init
+go run ./cmd/tracejutsu doctor
+go run ./cmd/tracejutsu demo --db "$TRACEJUTSU_DB"
+go run ./cmd/tracejutsu triage
+go run ./cmd/tracejutsu show inc-evt-001
 ```
 
 Useful database commands:
 
 ```sh
-go run ./cmd/tracejutsu events --db "$DB"
-go run ./cmd/tracejutsu event-summary --db "$DB" --type file_write
-go run ./cmd/tracejutsu db-stats --db "$DB"
+go run ./cmd/tracejutsu events --type execve --process payload
+go run ./cmd/tracejutsu incidents --llm-status pending
+go run ./cmd/tracejutsu event-summary --type file_write
+go run ./cmd/tracejutsu db-stats --format json
 ```
 
 ## Live Capture
@@ -77,14 +79,15 @@ sudo go run ./cmd/tracejutsu run
 Save live events and incidents:
 
 ```sh
-sudo go run ./cmd/tracejutsu run --db "$DB"
+sudo install -d -o root -g root -m 0700 /var/lib/tracejutsu
+sudo go run ./cmd/tracejutsu run --db /var/lib/tracejutsu/tracejutsu.db
 ```
 
 For service-style output, hide per-event JSON and print incidents plus runtime
 stats:
 
 ```sh
-sudo go run ./cmd/tracejutsu run --db "$DB" --quiet-events
+sudo go run ./cmd/tracejutsu run --db /var/lib/tracejutsu/tracejutsu.db --quiet-events
 ```
 
 Enable the broader lab collector set:
@@ -102,8 +105,14 @@ analyze a stored incident:
 
 ```sh
 llama-server --model /path/to/model.gguf --port 8080
-go run ./cmd/tracejutsu llm --db "$DB" inc-evt-001
-go run ./cmd/tracejutsu show --db "$DB" inc-evt-001
+go run ./cmd/tracejutsu llm inc-evt-001
+go run ./cmd/tracejutsu show inc-evt-001
+```
+
+Analyze pending incidents in priority order:
+
+```sh
+go run ./cmd/tracejutsu llm --all-pending --min-score 60 --limit 10
 ```
 
 Remote LLM endpoints are blocked unless you pass `--allow-remote-endpoint`.
@@ -147,15 +156,19 @@ Full validation:
 ## Command Summary
 
 ```text
+tracejutsu init [--db path]
+tracejutsu doctor [--db path] [--service]
 tracejutsu demo [--db path] [fixture.json]
 tracejutsu run [--db path] [--collectors list] [--quiet-events]
-tracejutsu events [--db path] [--limit count]
-tracejutsu event-summary [--db path] [--type event_type]
-tracejutsu db-stats [--db path]
-tracejutsu incidents [--db path] [--limit count]
-tracejutsu show [--db path] <incident_id>
+tracejutsu events [--db path] [--limit count] [--type event_type] [--process name] [--pid pid] [--container-id id] [--since time] [--until time]
+tracejutsu event-summary [--db path] [--type event_type] [--format text|json]
+tracejutsu db-stats [--db path] [--format text|json]
+tracejutsu incidents [--db path] [--limit count] [--llm-status status] [--since time] [--until time] [--format text|json]
+tracejutsu triage [--db path] [--limit count] [--min-score score] [--evidence-limit count] [--llm-status status] [--since time] [--until time] [--format text|json]
+tracejutsu show [--db path] [--evidence-limit count] [--format text|json] <incident_id>
 tracejutsu llm [--db path] <incident_id>
-tracejutsu rules
+tracejutsu llm [--db path] --all-pending [--min-score score] [--limit count]
+tracejutsu rules [--format text|json]
 tracejutsu config
 tracejutsu version
 ```

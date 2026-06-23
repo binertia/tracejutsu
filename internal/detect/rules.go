@@ -17,29 +17,6 @@ func NewBasic() Basic {
 	return Basic{}
 }
 
-func RuleIDs() []string {
-	return []string{
-		"web_process_spawned_shell",
-		"shell_downloaded_file",
-		"tmp_file_made_executable",
-		"recently_downloaded_binary_executed",
-		"downloaded_binary_connected_outbound",
-		"suspicious_reverse_shell_pattern",
-		"package_manager_spawned_shell",
-		"sensitive_file_access",
-		"crypto_miner_process_name",
-		"unexpected_network_tool_execution",
-		"sensitive_file_read",
-		"persistence_path_modified",
-		"log_tampering",
-		"privilege_change_after_suspicious_activity",
-		"namespace_escape_attempt",
-		"process_memory_access",
-		"unexpected_network_listener",
-		"kernel_tamper_syscall",
-	}
-}
-
 // Analyze applies a small deterministic rule set to a related process tree.
 func (Basic) Analyze(normalizedEvents []events.Event) Result {
 	ordered := append([]events.Event(nil), normalizedEvents...)

@@ -12,6 +12,14 @@ backup path without stopping the service:
 scripts/ops-validation.sh --yes
 ```
 
+For a quick local setup check without running the full validation helper:
+
+```sh
+sudo /usr/local/bin/tracejutsu doctor \
+  --db /var/lib/tracejutsu/tracejutsu.db \
+  --service
+```
+
 The helper inspects service state, database permissions, `db-stats`, file-write
 event summary, incident listing, recent runtime stats, and a SQLite online
 backup under `/var/backups/tracejutsu`. Add `--skip-backup` when `sqlite3` is
@@ -24,6 +32,14 @@ Check database table counts and file sizes:
 ```sh
 sudo /usr/local/bin/tracejutsu db-stats \
   --db /var/lib/tracejutsu/tracejutsu.db
+```
+
+Use JSON output when feeding local scripts:
+
+```sh
+sudo /usr/local/bin/tracejutsu db-stats \
+  --db /var/lib/tracejutsu/tracejutsu.db \
+  --format json
 ```
 
 Watch these fields over time:
@@ -43,6 +59,21 @@ sudo /usr/local/bin/tracejutsu event-summary \
   --db /var/lib/tracejutsu/tracejutsu.db \
   --type file_write \
   --limit 20
+```
+
+For incident review, start with prioritized triage and then drill into a single
+incident. Time filters use RFC3339 timestamps:
+
+```sh
+sudo /usr/local/bin/tracejutsu triage \
+  --db /var/lib/tracejutsu/tracejutsu.db \
+  --min-score 60 \
+  --llm-status pending
+
+sudo /usr/local/bin/tracejutsu show \
+  --db /var/lib/tracejutsu/tracejutsu.db \
+  --evidence-limit 20 \
+  <incident_id>
 ```
 
 ## Back Up

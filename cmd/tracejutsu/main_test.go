@@ -325,6 +325,52 @@ func TestRunLLMAnalyzesStoredIncident(t *testing.T) {
 	}
 }
 
+func TestRunLLMAllPendingAnalyzesBatch(t *testing.T) {
+	databasePath := createDemoDatabase(t)
+
+	previousFactory := newLLMClient
+	newLLMClient = func(llm.HTTPConfig) (llm.Client, error) {
+		return stubLLMClient{}, nil
+	}
+	defer func() {
+		newLLMClient = previousFactory
+	}()
+
+	var output bytes.Buffer
+	if err := run([]string{
+		"llm",
+		"--db", databasePath,
+		"--endpoint", "http://127.0.0.1:8080",
+		"--model", "test-model",
+		"--all-pending",
+		"--min-score", "50",
+		"--limit", "5",
+	}, &output); err != nil {
+		t.Fatal(err)
+	}
+	for _, expected := range []string{
+		"LLM ANALYSIS inc-evt-001",
+		"llm batch: processed=1 complete=1 failed=0",
+	} {
+		if !strings.Contains(output.String(), expected) {
+			t.Fatalf("output = %q, want substring %q", output.String(), expected)
+		}
+	}
+
+	database, err := store.OpenSQLite(databasePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	incident, _, err := database.GetIncident(context.Background(), "inc-evt-001")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if incident.LLMStatus != "complete" {
+		t.Fatalf("LLM status = %q, want complete", incident.LLMStatus)
+	}
+}
+
 func TestRunTriageShowsPrioritizedDemoIncident(t *testing.T) {
 	databaseDirectory := t.TempDir()
 	if err := os.Chmod(databaseDirectory, 0o700); err != nil {
@@ -498,6 +544,194 @@ func TestRunTriageSanitizesTerminalControlledText(t *testing.T) {
 	}
 }
 
+func TestRunInitAndDoctorUseDefaultStatePath(t *testing.T) {
+	stateHome := t.TempDir()
+	if err := os.Chmod(stateHome, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("TRACEJUTSU_DB", "")
+	t.Setenv("XDG_STATE_HOME", stateHome)
+	databasePath := filepath.Join(stateHome, "tracejutsu", "tracejutsu.db")
+
+	var initOutput bytes.Buffer
+	if err := run([]string{"init"}, &initOutput); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(initOutput.String(), databasePath) {
+		t.Fatalf("init output = %q, want database path %q", initOutput.String(), databasePath)
+	}
+	info, err := os.Stat(filepath.Dir(databasePath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != 0o700 {
+		t.Fatalf("state dir permissions = %04o, want 0700", got)
+	}
+
+	var doctorOutput bytes.Buffer
+	if err := run([]string{"doctor"}, &doctorOutput); err != nil {
+		t.Fatal(err)
+	}
+	for _, expected := range []string{"tracejutsu doctor", "OK   database", "OK   journal_mode"} {
+		if !strings.Contains(doctorOutput.String(), expected) {
+			t.Fatalf("doctor output = %q, want substring %q", doctorOutput.String(), expected)
+		}
+	}
+}
+
+func TestCommandsUseTracejutsuDBDefaultAndFilterEvents(t *testing.T) {
+	databasePath := createDemoDatabase(t)
+	t.Setenv("TRACEJUTSU_DB", databasePath)
+
+	var eventsOutput bytes.Buffer
+	if err := run([]string{
+		"events",
+		"--type", "execve",
+		"--process", "payload",
+		"--pid", "4131",
+		"--container-id", "9f6d7e8a",
+		"--since", "2026-06-02T10:15:33Z",
+		"--until", "2026-06-02T10:15:33Z",
+	}, &eventsOutput); err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(eventsOutput.String()), "\n")
+	if len(lines) != 1 {
+		t.Fatalf("events output = %q, want one JSON line", eventsOutput.String())
+	}
+	var event events.Event
+	if err := json.Unmarshal([]byte(lines[0]), &event); err != nil {
+		t.Fatal(err)
+	}
+	if event.EventID != "evt-004" {
+		t.Fatalf("event ID = %q, want evt-004", event.EventID)
+	}
+
+	var incidentsOutput bytes.Buffer
+	if err := run([]string{
+		"incidents",
+		"--llm-status", "pending",
+		"--since", "2026-06-02T10:15:00Z",
+		"--until", "2026-06-02T10:16:00Z",
+		"--format", "json",
+	}, &incidentsOutput); err != nil {
+		t.Fatal(err)
+	}
+	var incidents []compress.Incident
+	if err := json.Unmarshal(incidentsOutput.Bytes(), &incidents); err != nil {
+		t.Fatal(err)
+	}
+	if len(incidents) != 1 || incidents[0].IncidentID != "inc-evt-001" {
+		t.Fatalf("incidents = %+v, want inc-evt-001", incidents)
+	}
+}
+
+func TestRunShowEvidencePreviewAndJSON(t *testing.T) {
+	databasePath := createDemoDatabase(t)
+
+	var textOutput bytes.Buffer
+	if err := run([]string{
+		"show",
+		"--db", databasePath,
+		"--evidence-limit", "2",
+		"inc-evt-001",
+	}, &textOutput); err != nil {
+		t.Fatal(err)
+	}
+	for _, expected := range []string{"Evidence events: 5", "evt-001 execve", "... 3 more"} {
+		if !strings.Contains(textOutput.String(), expected) {
+			t.Fatalf("show output = %q, want substring %q", textOutput.String(), expected)
+		}
+	}
+
+	var jsonOutput bytes.Buffer
+	if err := run([]string{
+		"show",
+		"--db", databasePath,
+		"--format", "json",
+		"inc-evt-001",
+	}, &jsonOutput); err != nil {
+		t.Fatal(err)
+	}
+	var payload struct {
+		Incident       compress.Incident `json:"incident"`
+		EvidenceEvents []events.Event    `json:"evidence_events"`
+	}
+	if err := json.Unmarshal(jsonOutput.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload.Incident.IncidentID != "inc-evt-001" || len(payload.EvidenceEvents) != 5 {
+		t.Fatalf("show JSON = %+v, want incident and five evidence events", payload)
+	}
+}
+
+func TestRunJSONOutputFormats(t *testing.T) {
+	databasePath := createDemoDatabase(t)
+	for _, args := range [][]string{
+		{"db-stats", "--db", databasePath, "--format", "json"},
+		{"event-summary", "--db", databasePath, "--format", "json"},
+		{"triage", "--db", databasePath, "--format", "json"},
+	} {
+		var output bytes.Buffer
+		if err := run(args, &output); err != nil {
+			t.Fatalf("args %v: %v", args, err)
+		}
+		if !json.Valid(output.Bytes()) {
+			t.Fatalf("args %v output is not valid JSON: %q", args, output.String())
+		}
+	}
+}
+
+func TestRunRulesFormats(t *testing.T) {
+	var textOutput bytes.Buffer
+	if err := run([]string{"rules"}, &textOutput); err != nil {
+		t.Fatal(err)
+	}
+	for _, expected := range []string{"web_process_spawned_shell", "score=30", "collectors=execve"} {
+		if !strings.Contains(textOutput.String(), expected) {
+			t.Fatalf("rules output = %q, want substring %q", textOutput.String(), expected)
+		}
+	}
+
+	var jsonOutput bytes.Buffer
+	if err := run([]string{"rules", "--format", "json"}, &jsonOutput); err != nil {
+		t.Fatal(err)
+	}
+	var definitions []struct {
+		RuleID      string   `json:"rule_id"`
+		ScoreImpact int      `json:"score_impact"`
+		Collectors  []string `json:"collectors"`
+	}
+	if err := json.Unmarshal(jsonOutput.Bytes(), &definitions); err != nil {
+		t.Fatal(err)
+	}
+	if len(definitions) == 0 || definitions[0].RuleID != "web_process_spawned_shell" || definitions[0].ScoreImpact != 30 {
+		t.Fatalf("definitions = %+v, want first rule metadata", definitions)
+	}
+}
+
+func TestSQLitePathHintForPermissiveParent(t *testing.T) {
+	parent := filepath.Join(t.TempDir(), "shared")
+	if err := os.Mkdir(parent, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(parent, 0o777); err != nil {
+		t.Fatal(err)
+	}
+
+	err := run([]string{
+		"demo",
+		"--db", filepath.Join(parent, "tracejutsu.db"),
+		"../../testdata/events/web-download-execute-connect.json",
+	}, &bytes.Buffer{})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "hint:") {
+		t.Fatalf("error = %q, want actionable hint", err.Error())
+	}
+}
+
 func TestRunEventSummary(t *testing.T) {
 	databaseDirectory := t.TempDir()
 	if err := os.Chmod(databaseDirectory, 0o700); err != nil {
@@ -663,6 +897,23 @@ func loadMainFixture(t *testing.T) []events.Event {
 		t.Fatal(err)
 	}
 	return normalizedEvents
+}
+
+func createDemoDatabase(t *testing.T) string {
+	t.Helper()
+	databaseDirectory := t.TempDir()
+	if err := os.Chmod(databaseDirectory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	databasePath := filepath.Join(databaseDirectory, "tracejutsu.db")
+	if err := run([]string{
+		"demo",
+		"--db", databasePath,
+		"../../testdata/events/web-download-execute-connect.json",
+	}, &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+	return databasePath
 }
 
 func mainTestIncident(id string, score int, start time.Time, summary string) compress.Incident {

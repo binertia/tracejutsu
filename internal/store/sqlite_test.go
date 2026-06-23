@@ -391,6 +391,38 @@ func TestSQLiteOrdersFractionalTimestamps(t *testing.T) {
 	})
 }
 
+func TestSQLiteListEventsFiltered(t *testing.T) {
+	ctx := context.Background()
+	database := openTestSQLite(t)
+	normalizedEvents := loadFixture(t, "../../testdata/events/web-download-execute-connect.json")
+	if err := database.SaveEvents(ctx, normalizedEvents); err != nil {
+		t.Fatal(err)
+	}
+
+	filtered, err := database.ListEventsFiltered(ctx, store.EventFilter{
+		EventType:   string(events.TypeExecve),
+		ProcessName: "payload",
+		PID:         4131,
+		ContainerID: "9f6d7e8a",
+		Since:       time.Date(2026, time.June, 2, 10, 15, 33, 0, time.UTC),
+		Until:       time.Date(2026, time.June, 2, 10, 15, 33, 0, time.UTC),
+		Limit:       10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertEventIDs(t, filtered, []string{"evt-004"})
+
+	connects, err := database.ListEventsFiltered(ctx, store.EventFilter{
+		EventType: string(events.TypeConnect),
+		Limit:     10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertEventIDs(t, connects, []string{"evt-005"})
+}
+
 func TestSQLiteRejectsMissingIncidentEvent(t *testing.T) {
 	ctx := context.Background()
 	database := openTestSQLite(t)
@@ -505,6 +537,48 @@ func TestSQLiteListTriageIncidentsOrdersFiltersAndCountsEvidence(t *testing.T) {
 	}
 	if entries[1].Incident.IncidentID != "inc-critical-old" || entries[1].EvidenceCount != 1 {
 		t.Fatalf("second entry = %+v, want inc-critical-old with 1 evidence event", entries[1])
+	}
+}
+
+func TestSQLiteListIncidentsFiltered(t *testing.T) {
+	ctx := context.Background()
+	database := openTestSQLite(t)
+	for _, incident := range []compress.Incident{
+		testIncident("inc-pending-old", 60, time.Date(2026, time.June, 3, 10, 0, 0, 0, time.UTC)),
+		testIncident("inc-pending-new", 80, time.Date(2026, time.June, 3, 12, 0, 0, 0, time.UTC)),
+		testIncident("inc-complete", 90, time.Date(2026, time.June, 3, 13, 0, 0, 0, time.UTC)),
+	} {
+		if incident.IncidentID == "inc-complete" {
+			incident.LLMStatus = "complete"
+		}
+		if err := database.SaveIncident(ctx, incident); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	incidents, err := database.ListIncidentsFiltered(ctx, store.IncidentFilter{
+		Limit:     10,
+		LLMStatus: "pending",
+		Since:     time.Date(2026, time.June, 3, 11, 0, 0, 0, time.UTC),
+		Until:     time.Date(2026, time.June, 3, 12, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(incidents) != 1 || incidents[0].IncidentID != "inc-pending-new" {
+		t.Fatalf("incidents = %+v, want only inc-pending-new", incidents)
+	}
+
+	triage, err := database.ListTriageIncidentsFiltered(ctx, store.IncidentFilter{
+		Limit:     10,
+		MinScore:  80,
+		LLMStatus: "complete",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(triage) != 1 || triage[0].Incident.IncidentID != "inc-complete" {
+		t.Fatalf("triage = %+v, want only inc-complete", triage)
 	}
 }
 
